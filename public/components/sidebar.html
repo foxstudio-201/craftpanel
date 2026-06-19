@@ -1,0 +1,51 @@
+<aside class="sidebar glass-strong" id="sidebar">
+  <div class="flex items-center gap-3 px-2 py-2 mb-2">
+    <div class="w-10 h-10 rounded-xl grid place-items-center bg-gradient-to-br from-brand-500 to-accent-500 shadow-glow">
+      <i data-lucide="box" class="w-6 h-6 text-white"></i>
+    </div>
+    <div>
+      <p class="font-display font-bold text-lg leading-none gradient-text">CraftPanel</p>
+      <p class="text-[0.68rem] text-slate-500 mt-1 tracking-widest uppercase">Hosting Panel</p>
+    </div>
+  </div>
+
+  <nav class="flex-1 overflow-y-auto -mx-1 px-1">
+    <a href="/marketplace" data-nav="marketplace" class="nav-link"><i data-lucide="store" class="w-5 h-5"></i> Marketplace</a>
+    <div data-admin-only class="hidden">
+      <a href="/dashboard" data-nav="dashboard" class="nav-link"><i data-lucide="layout-dashboard" class="w-5 h-5"></i> Overview</a>
+      <a href="/monitoring" data-nav="monitoring" class="nav-link"><i data-lucide="activity" class="w-5 h-5"></i> Monitoring</a>
+    </div>
+
+    <p class="nav-section">My Services</p>
+    <a href="/servers" data-nav="servers" class="nav-link"><i data-lucide="server" class="w-5 h-5"></i> Servers</a>
+    <a href="/console" data-nav="console" class="nav-link"><i data-lucide="terminal" class="w-5 h-5"></i> Console</a>
+    <a href="/files" data-nav="files" class="nav-link"><i data-lucide="folder" class="w-5 h-5"></i> Files</a>
+    <a href="/databases" data-nav="databases" class="nav-link"><i data-lucide="database" class="w-5 h-5"></i> Databases</a>
+    <a href="/backups" data-nav="backups" class="nav-link"><i data-lucide="archive" class="w-5 h-5"></i> Backups</a>
+    <a href="/schedules" data-nav="schedules" class="nav-link"><i data-lucide="clock" class="w-5 h-5"></i> Schedules</a>
+    <a href="/startup" data-nav="startup" class="nav-link"><i data-lucide="sliders-horizontal" class="w-5 h-5"></i> Startup</a>
+    <a href="/network" data-nav="network" class="nav-link"><i data-lucide="network" class="w-5 h-5"></i> Network</a>
+    <a href="/players" data-nav="players" class="nav-link"><i data-lucide="users" class="w-5 h-5"></i> Players</a>
+    <a href="/plugins" data-nav="plugins" class="nav-link"><i data-lucide="puzzle" class="w-5 h-5"></i> Plugins</a>
+
+    <p class="nav-section">Account</p>
+    <a href="/api-keys" data-nav="api-keys" class="nav-link"><i data-lucide="key-round" class="w-5 h-5"></i> API</a>
+    <a href="/activity" data-nav="activity" class="nav-link"><i data-lucide="scroll-text" class="w-5 h-5"></i> Activity</a>
+    <a href="/profile" data-nav="profile" class="nav-link"><i data-lucide="user" class="w-5 h-5"></i> Profile</a>
+    <a href="/settings" data-nav="settings" class="nav-link"><i data-lucide="settings" class="w-5 h-5"></i> Settings</a>
+
+    <div data-admin-only class="hidden">
+      <p class="nav-section text-accent-400">Administration</p>
+      <a href="/admin" data-nav="admin" class="nav-link"><i data-lucide="shield" class="w-5 h-5"></i> Admin Dashboard</a>
+      <a href="/users" data-nav="users" class="nav-link"><i data-lucide="user-cog" class="w-5 h-5"></i> Users</a>
+      <a href="/domains" data-nav="domains" class="nav-link"><i data-lucide="globe" class="w-5 h-5"></i> Domains</a>
+    </div>
+  </nav>
+
+  <div class="glass rounded-2xl p-3 mt-2">
+    <div class="flex items-center gap-2 text-xs text-slate-400 mb-2">
+      <span class="dot dot-live"></span> <span id="sb-status">Live</span>
+    </div>
+    <button data-logout class="btn btn-ghost w-full btn-sm"><i data-lucide="log-out" class="w-4 h-4"></i> Sign out</button>
+  </div>
+</aside>

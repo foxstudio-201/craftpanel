@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Create account · CraftPanel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Orbitron:wght@600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/js/tailwind.cdn.js"></script>
+  <link rel="stylesheet" href="/css/custom.css" />
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <div class="bg-aurora"></div>
+  <div class="bg-grid"></div>
+  <div class="orb" style="width:22rem;height:22rem;background:#8b5cf6;top:-5rem;right:-5rem;"></div>
+  <div class="orb" style="width:20rem;height:20rem;background:#10b981;bottom:-6rem;left:-4rem;animation-delay:-4s;"></div>
+
+  <main class="min-h-screen flex items-center justify-center p-6">
+    <div class="glass glass-card w-full max-w-md p-8 fade-in-up">
+      <div class="flex items-center gap-2 mb-6 justify-center">
+        <div class="w-10 h-10 rounded-lg grid place-items-center bg-gradient-to-br from-brand-500 to-accent-500 shadow-glow"><i data-lucide="box" class="w-5 h-5 text-white"></i></div>
+        <span class="font-display font-bold text-lg gradient-text">CraftPanel</span>
+      </div>
+      <h2 class="text-2xl font-bold mb-1">Create your account</h2>
+      <p class="text-slate-400 text-sm mb-6">The first account becomes the administrator.</p>
+
+      <form id="register-form" class="space-y-4">
+        <div>
+          <label class="label">Username</label>
+          <div class="relative"><i data-lucide="user" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"></i>
+          <input name="username" class="input pl-9" placeholder="steve" minlength="3" required /></div>
+        </div>
+        <div>
+          <label class="label">Email</label>
+          <div class="relative"><i data-lucide="at-sign" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"></i>
+          <input name="email" type="email" class="input pl-9" placeholder="you@example.com" required /></div>
+        </div>
+        <div>
+          <label class="label">Password</label>
+          <div class="relative"><i data-lucide="lock" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"></i>
+          <input name="password" type="password" id="pw" class="input pl-9" placeholder="At least 8 characters" minlength="8" required /></div>
+          <div class="meter mt-2"><span id="pw-meter" style="width:0%"></span></div>
+        </div>
+        <div>
+          <label class="label">Confirm password</label>
+          <div class="relative"><i data-lucide="lock" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"></i>
+          <input name="confirm" type="password" class="input pl-9" placeholder="Repeat password" required /></div>
+        </div>
+        <label class="flex items-start gap-2 text-xs text-slate-400 cursor-pointer"><input type="checkbox" class="accent-brand-500 mt-0.5" required /> I agree to the Terms of Service and Privacy Policy.</label>
+        <button type="submit" class="btn btn-primary w-full"><i data-lucide="user-plus" class="w-4 h-4"></i> Create account</button>
+      </form>
+
+      <p class="text-center text-sm text-slate-400 mt-6">Already have an account? <a href="/login" class="text-brand-400 font-semibold hover:underline">Sign in</a></p>
+    </div>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/ui.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    auth.redirectIfAuthed();
+
+    const pw = document.getElementById('pw');
+    pw.addEventListener('input', () => {
+      let score = 0;
+      if (pw.value.length >= 8) score += 34;
+      if (/[A-Z]/.test(pw.value) && /[a-z]/.test(pw.value)) score += 33;
+      if (/\d/.test(pw.value) || /[^A-Za-z0-9]/.test(pw.value)) score += 33;
+      const m = document.getElementById('pw-meter');
+      m.style.width = score + '%';
+      m.parentElement.className = 'meter mt-2 ' + (score >= 90 ? '' : score >= 60 ? 'warn' : 'danger');
+    });
+
+    document.getElementById('register-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(e.target));
+      if (data.password !== data.confirm) return ui.toastError('Passwords do not match');
+      const btn = e.target.querySelector('button[type=submit]');
+      btn.disabled = true;
+      try {
+        const { token } = await api.post('/auth/register', { username: data.username, email: data.email, password: data.password });
+        api.setToken(token);
+        ui.toastSuccess('Account created — welcome!');
+        setTimeout(() => (location.href = '/marketplace'), 500);
+      } catch (err) {
+        ui.toastError(err.message);
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(timeout 6 node src/server.js)",
+      "Bash(curl -s -X POST localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{\"identifier\":\"admin@craftpanel.local\",\"password\":\"admin12345\"}')",
+      "Bash(node -pe 'JSON.parse\\(require\\(\"fs\"\\).readFileSync\\(0\\)\\).data.stats.total+\" dbs\"')",
+      "Bash(curl -s localhost:3000/dashboard)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" localhost:3000/api/dashboard)",
+      "Bash(curl -s -X POST localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{\"identifier\":\"user@craftpanel.local\",\"password\":\"user12345\"}')",
+      "Bash(pkill -f \"node src/server.js\")",
+      "Bash(kill -9 22320)",
+      "Bash(node --check src/controllers/startupController.js)",
+      "Bash(node --check src/controllers/envController.js)",
+      "Bash(node --check src/services/service.catalog.js)",
+      "Bash(node --check src/routes/server.routes.js)",
+      "Bash(node -e \"import\\('./src/services/service.catalog.js'\\).then\\(m=>{console.log\\('node express startup:', m.SERVICES.node.templates.express.startup.slice\\(0,60\\)\\); console.log\\('OK catalog import'\\)}\\)\")"
+    ]
+  }
+}

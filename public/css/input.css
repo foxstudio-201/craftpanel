@@ -1,0 +1,12 @@
+/*
+ * Tailwind entry file for the production build.
+ *   npm run css:build   → public/css/tailwind.css
+ *
+ * During development the pages load Tailwind via the Play CDN (see
+ * public/js/tailwind.cdn.js) so the app runs with zero build step. For a
+ * hardened deployment, build this file and replace the CDN <script> tag with
+ *   <link rel="stylesheet" href="/css/tailwind.css">
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in · CraftPanel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Orbitron:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/js/tailwind.cdn.js"></script>
+  <link rel="stylesheet" href="/css/custom.css" />
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <div class="bg-aurora"></div>
+  <div class="bg-grid"></div>
+  <div class="orb" style="width:24rem;height:24rem;background:#10b981;top:-6rem;left:-6rem;"></div>
+  <div class="orb" style="width:20rem;height:20rem;background:#8b5cf6;bottom:-5rem;right:-4rem;animation-delay:-3s;"></div>
+
+  <main class="min-h-screen grid lg:grid-cols-2">
+    <!-- Brand panel -->
+    <section class="hidden lg:flex flex-col justify-between p-12 relative">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-xl grid place-items-center bg-gradient-to-br from-brand-500 to-accent-500 shadow-glow">
+          <i data-lucide="box" class="w-6 h-6 text-white"></i>
+        </div>
+        <span class="font-display font-bold text-xl gradient-text">CraftPanel</span>
+      </div>
+      <div class="max-w-md">
+        <h1 class="font-display text-4xl font-extrabold leading-tight mb-4">Command your <span class="gradient-text">Minecraft</span> empire.</h1>
+        <p class="text-slate-400 text-lg">Real-time monitoring, console access, file management and player control — all in one beautiful dashboard.</p>
+        <div class="grid grid-cols-3 gap-4 mt-10">
+          <div class="glass glass-card p-4"><p class="text-2xl font-bold gradient-text">99.9%</p><p class="text-xs text-slate-500 mt-1">Uptime</p></div>
+          <div class="glass glass-card p-4"><p class="text-2xl font-bold gradient-text">20</p><p class="text-xs text-slate-500 mt-1">TPS target</p></div>
+          <div class="glass glass-card p-4"><p class="text-2xl font-bold gradient-text">∞</p><p class="text-xs text-slate-500 mt-1">Servers</p></div>
+        </div>
+      </div>
+      <p class="text-xs text-slate-600">© 2026 CraftPanel — Gaming Server Management</p>
+    </section>
+
+    <!-- Form panel -->
+    <section class="flex items-center justify-center p-6">
+      <div class="glass glass-card w-full max-w-md p-8 fade-in-up">
+        <div class="lg:hidden flex items-center gap-2 mb-6 justify-center">
+          <div class="w-9 h-9 rounded-lg grid place-items-center bg-gradient-to-br from-brand-500 to-accent-500"><i data-lucide="box" class="w-5 h-5 text-white"></i></div>
+          <span class="font-display font-bold text-lg gradient-text">CraftPanel</span>
+        </div>
+        <h2 class="text-2xl font-bold mb-1">Welcome back</h2>
+        <p class="text-slate-400 text-sm mb-6">Sign in to your control panel.</p>
+
+        <form id="login-form" class="space-y-4">
+          <div>
+            <label class="label">Email or username</label>
+            <div class="relative">
+              <i data-lucide="at-sign" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"></i>
+              <input name="identifier" class="input pl-9" placeholder="admin@craftpanel.local" autocomplete="username" required />
+            </div>
+          </div>
+          <div>
+            <label class="label">Password</label>
+            <div class="relative">
+              <i data-lucide="lock" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"></i>
+              <input name="password" type="password" class="input pl-9 pr-10" placeholder="••••••••" autocomplete="current-password" required />
+              <button type="button" data-toggle-pw class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"><i data-lucide="eye" class="w-4 h-4"></i></button>
+            </div>
+          </div>
+          <div class="flex items-center justify-between text-sm">
+            <label class="flex items-center gap-2 text-slate-400 cursor-pointer"><input type="checkbox" class="accent-brand-500" /> Remember me</label>
+            <a href="/forgot-password" class="text-brand-400 hover:underline">Forgot password?</a>
+          </div>
+          <button type="submit" class="btn btn-primary w-full"><i data-lucide="log-in" class="w-4 h-4"></i> Sign in</button>
+        </form>
+
+        <div class="mt-5 p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-slate-400">
+          <p class="font-semibold text-slate-300 mb-1">Demo accounts</p>
+          admin@craftpanel.local · admin12345<br />
+          mod@craftpanel.local · moderator123<br />
+          user@craftpanel.local · user12345
+        </div>
+
+        <p class="text-center text-sm text-slate-400 mt-6">No account? <a href="/register" class="text-brand-400 font-semibold hover:underline">Create one</a></p>
+      </div>
+    </section>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/ui.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    auth.redirectIfAuthed();
+
+    document.querySelector('[data-toggle-pw]').addEventListener('click', (e) => {
+      const input = e.currentTarget.previousElementSibling.previousElementSibling;
+      input.type = input.type === 'password' ? 'text' : 'password';
+    });
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button[type=submit]');
+      btn.disabled = true;
+      const body = Object.fromEntries(new FormData(e.target));
+      try {
+        const { token } = await api.post('/auth/login', body);
+        api.setToken(token);
+        ui.toastSuccess('Signed in — redirecting…');
+        setTimeout(() => (location.href = '/marketplace'), 400);
+      } catch (err) {
+        ui.toastError(err.message);
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

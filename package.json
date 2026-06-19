@@ -1,0 +1,56 @@
+{
+  "name": "craftpanel",
+  "version": "1.0.0",
+  "description": "CraftPanel — a production-ready Minecraft Server Management Dashboard (Node.js, Express, Tailwind CSS, Socket.IO) with a gaming glassmorphism UI.",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "css:build": "tailwindcss -i ./public/css/input.css -o ./public/css/tailwind.css --minify",
+    "css:watch": "tailwindcss -i ./public/css/input.css -o ./public/css/tailwind.css --watch",
+    "seed": "node src/data/seed.js"
+  },
+  "keywords": [
+    "minecraft",
+    "dashboard",
+    "panel",
+    "express",
+    "tailwind",
+    "glassmorphism",
+    "websocket"
+  ],
+  "author": "CraftPanel",
+  "license": "MIT",
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "bcryptjs": "^2.4.3",
+    "compression": "^1.7.4",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "cron-parser": "^4.9.0",
+    "dockerode": "^4.0.12",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.2.0",
+    "helmet": "^7.1.0",
+    "ioredis": "^5.11.1",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^2.2.0",
+    "nanoid": "^5.0.7",
+    "node-cron": "^3.0.3",
+    "node-stream-zip": "^1.15.0",
+    "rcon-client": "^4.2.5",
+    "socket.io": "^4.7.5",
+    "ssh2": "^1.17.0",
+    "tar-fs": "^3.1.2"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.3",
+    "tailwindcss": "^3.4.4"
+  }
+}

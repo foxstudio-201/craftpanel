@@ -1,0 +1,49 @@
+<header class="glass-strong sticky top-0 z-30 border-b border-white/5">
+  <div class="flex items-center gap-3 px-4 sm:px-6 h-16">
+    <button data-sidebar-toggle class="btn btn-icon btn-ghost lg:hidden"><i data-lucide="menu" class="w-5 h-5"></i></button>
+
+    <div>
+      <h1 class="font-display font-bold text-base sm:text-lg" data-page-title>Dashboard</h1>
+      <p class="text-xs text-slate-500 hidden sm:block" data-page-subtitle>Welcome back</p>
+    </div>
+
+    <div class="ml-auto flex items-center gap-2 sm:gap-3">
+      <div class="relative hidden md:block">
+        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"></i>
+        <input type="text" placeholder="Search…" class="input pl-9 py-2 w-44 lg:w-60" data-global-search>
+      </div>
+
+      <!-- Notifications -->
+      <div class="relative">
+        <button data-notif-toggle class="btn btn-icon btn-ghost relative">
+          <i data-lucide="bell" class="w-5 h-5"></i>
+          <span data-notif-badge class="hidden absolute -top-1 -right-1 min-w-[1.1rem] h-[1.1rem] px-1 grid place-items-center text-[0.62rem] font-bold rounded-full bg-brand-500 text-black"></span>
+        </button>
+        <div data-notif-panel class="hidden absolute right-0 mt-2 w-80 glass-strong rounded-2xl p-2 shadow-glass z-40">
+          <div class="flex items-center justify-between px-2 py-1">
+            <p class="font-semibold text-sm">Notifications</p>
+            <button data-notif-readall class="text-xs text-brand-400 hover:underline">Mark all read</button>
+          </div>
+          <div data-notif-list class="max-h-80 overflow-y-auto mt-1 space-y-1"></div>
+        </div>
+      </div>
+
+      <!-- User menu -->
+      <div class="relative">
+        <button data-user-toggle class="flex items-center gap-2 btn btn-ghost py-1.5 pl-1.5 pr-3">
+          <span data-user-avatar class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-accent-500 grid place-items-center text-sm font-bold text-black">?</span>
+          <span class="hidden sm:block text-left">
+            <span data-user-name class="block text-sm font-semibold leading-none">User</span>
+            <span data-user-role class="block text-[0.68rem] text-slate-500 capitalize mt-0.5">user</span>
+          </span>
+          <i data-lucide="chevron-down" class="w-4 h-4 text-slate-500"></i>
+        </button>
+        <div data-user-panel class="hidden absolute right-0 mt-2 w-52 glass-strong rounded-2xl p-2 z-40">
+          <a href="/profile" class="nav-link"><i data-lucide="user" class="w-4 h-4"></i> Profile</a>
+          <a href="/settings" class="nav-link"><i data-lucide="settings" class="w-4 h-4"></i> Settings</a>
+          <button data-logout class="nav-link w-full text-left text-red-300"><i data-lucide="log-out" class="w-4 h-4"></i> Sign out</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
