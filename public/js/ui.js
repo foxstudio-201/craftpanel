@@ -131,5 +131,24 @@
 
   const meterClass = (pct) => (pct >= 85 ? 'danger' : pct >= 65 ? 'warn' : '');
 
-  window.ui = { $, $$, el, toast, toastSuccess, toastError, toastWarn, toastInfo, modal, confirmDialog, fmt, escapeHtml, meterClass };
+  // Single source of truth for server-state presentation, so Console and Overview
+  // render byte-identical status. The state itself always comes from the backend
+  // (Docker syncStatus) — this only maps it to a label + badge class.
+  const STATUS_MAP = {
+    running:    { label: 'Running',    cls: 'badge-success', dot: true },
+    starting:   { label: 'Starting',   cls: 'badge-warn',    dot: true },
+    stopping:   { label: 'Stopping',   cls: 'badge-warn',    dot: true },
+    restarting: { label: 'Restarting', cls: 'badge-warn',    dot: true },
+    installing: { label: 'Installing', cls: 'badge-info',    dot: true },
+    crashed:    { label: 'Crashed',    cls: 'badge-danger',  dot: false },
+    install_failed: { label: 'Install failed', cls: 'badge-danger', dot: false },
+    offline:    { label: 'Offline',    cls: 'badge-muted',   dot: false },
+  };
+  const serverStatus = (state) => STATUS_MAP[state] || STATUS_MAP.offline;
+  const serverStatusBadge = (state) => {
+    const s = serverStatus(state);
+    return `<span class="badge ${s.cls}">${s.dot ? '<span class="dot dot-live"></span> ' : ''}${s.label}</span>`;
+  };
+
+  window.ui = { $, $$, el, toast, toastSuccess, toastError, toastWarn, toastInfo, modal, confirmDialog, fmt, escapeHtml, meterClass, serverStatus, serverStatusBadge };
 })();

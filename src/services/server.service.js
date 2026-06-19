@@ -32,6 +32,36 @@ export { find as findServer };
 
 const isService = (server) => server.kind === 'service';
 
+/**
+ * Make a service volume writable by the container user.
+ *
+ * The yolks runtime images run as uid 1001 (`container`), while the panel runs
+ * unprivileged (typically uid 1000) and owns the bind-mounted volume — so it
+ * cannot chown to 1001. The reliable cross-uid fix is world-writable perms:
+ * directories 0777, files 0666, applied recursively. This must run not only at
+ * install but **before every start**, because files the user adds afterwards
+ * (git clone, uploads, npm-written package-lock.json) are created 1000:1000 and
+ * would otherwise give the container EACCES (e.g. `npm install` writing
+ * /home/container/package-lock.json). Best-effort: per-entry failures are
+ * ignored so one stubborn file never blocks a start.
+ */
+function ensureVolumeWritable(uuid) {
+  const root = mc.volumePath(uuid);
+  fs.mkdirSync(root, { recursive: true });
+  const walk = (p, isDir) => {
+    try { fs.chmodSync(p, isDir ? 0o777 : 0o666); } catch { /* best effort */ }
+    if (!isDir) return;
+    let entries = [];
+    try { entries = fs.readdirSync(p, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      // Skip symlinks (don't chmod link targets outside the volume).
+      if (e.isSymbolicLink()) continue;
+      walk(path.join(p, e.name), e.isDirectory());
+    }
+  };
+  walk(root, true);
+}
+
 /** Image required by a server (service image or Minecraft itzg image). */
 function serverImage(server) {
   return isService(server) ? server.image : mc.SOFTWARE[server.software]?.image;
@@ -49,6 +79,10 @@ function buildContainerOptions(server) {
     SERVER_PORT: String(port),
     PORT: String(port),
     P_SERVER_UUID: server.uuid,
+    // Hint the container user/group to match the panel's (documents intent; the
+    // primary cross-uid remedy is the recursive chmod in ensureVolumeWritable).
+    UID: String(process.getuid?.() ?? 1000),
+    GID: String(process.getgid?.() ?? 1000),
     ...(server.env || {}),
   };
   const env = Object.entries(envObj).map(([k, v]) => `${k}=${v}`);
@@ -302,10 +336,8 @@ export async function createService(input, actor) {
 
   try {
     await docker.ensureImage(server.image);
-    const volPath = mc.volumePath(uuid);
-    fs.mkdirSync(volPath, { recursive: true });
-    // yolks runs as uid 1001; make the volume writable by both it and the panel.
-    try { fs.chmodSync(volPath, 0o777); } catch { /* best effort */ }
+    // yolks runs as uid 1001; make the volume writable by it and the panel.
+    ensureVolumeWritable(uuid);
     server.dockerId = await docker.createContainer(buildContainerOptions(server));
     server.installStatus = 'installed';
     server.state = 'created';
@@ -338,11 +370,7 @@ export async function createService(input, actor) {
 export async function reinstall(server, actor) {
   if (server.dockerId) await docker.remove(server.dockerId, { force: true });
   await docker.ensureImage(serverImage(server));
-  if (isService(server)) {
-    const volPath = mc.volumePath(server.uuid);
-    fs.mkdirSync(volPath, { recursive: true });
-    try { fs.chmodSync(volPath, 0o777); } catch { /* best effort */ }
-  }
+  if (isService(server)) ensureVolumeWritable(server.uuid);
   server.dockerId = await docker.createContainer(buildContainerOptions(server));
   server.installStatus = 'installed';
   server.state = 'created';
@@ -371,6 +399,12 @@ export async function power(server, action, actor) {
   // The console is tied to this id so it never shows output from a previous run.
   if (action === 'start' || action === 'restart') server.runtimeId = crypto.randomUUID();
   else if (action === 'stop' || action === 'kill') server.runtimeId = null;
+
+  // Before (re)starting a service, make the volume writable by the container
+  // user (uid 1001) so npm/git/user files added since install don't EACCES.
+  if (isService(server) && (action === 'start' || action === 'restart')) {
+    try { ensureVolumeWritable(server.uuid); } catch { /* best effort */ }
+  }
 
   // Mark a real, time-boxed transition and broadcast it immediately.
   server.transition = TRANSITION[action];
@@ -455,7 +489,7 @@ export async function cloneServer(source, actor) {
   fs.mkdirSync(destPath, { recursive: true });
   if (fs.existsSync(srcPath)) await fsp.cp(srcPath, destPath, { recursive: true });
 
-  if (isService(clone)) { try { fs.chmodSync(destPath, 0o777); } catch { /* best effort */ } }
+  if (isService(clone)) { try { ensureVolumeWritable(uuid); } catch { /* best effort */ } }
 
   db.data.servers.push(clone);
   await docker.ensureImage(serverImage(clone));

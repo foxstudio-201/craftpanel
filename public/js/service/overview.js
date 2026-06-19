@@ -9,11 +9,8 @@
     const reg = window.ServiceRegistry;
     const id = server.id;
 
-    const stateBadge = (s) => {
-      const map = { running: 'badge-success', starting: 'badge-warn', restarting: 'badge-warn', stopping: 'badge-warn', installing: 'badge-info', crashed: 'badge-danger', install_failed: 'badge-danger' };
-      const dot = s === 'running' ? '<span class="dot dot-live"></span> ' : '';
-      return `<span class="badge ${map[s] || 'badge-muted'}">${dot}${s}</span>`;
-    };
+    // Shared status presentation — identical to the Console badge (req #7).
+    const stateBadge = (s) => ui.serverStatusBadge(s);
 
     content.innerHTML = `
       <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -90,12 +87,13 @@
       } catch (e) { toastError(e.message); }
     }
 
-    function renderMetrics(m) {
+    // Render metrics from the shared runtime-store record.
+    function renderMetrics(r) {
       const set = (k, v, sub) => { const el = document.querySelector(`[data-m="${k}"]`); if (el) el.textContent = v; const s = document.querySelector(`[data-msub="${k}"]`); if (s && sub != null) s.innerHTML = sub; };
-      set('cpu', `${(m.cpu ?? 0).toFixed(0)}%`, `${server.limits.cpu} cores`);
-      set('ram', `${(m.ramPercent ?? 0).toFixed(0)}%`, `${(m.ramUsedMb ?? 0).toFixed(0)} / ${m.ramTotalMb || server.limits.ramMb} MB`);
-      set('disk', `${(m.diskPercent ?? 0).toFixed(0)}%`, `${(m.diskUsedGb ?? 0).toFixed(2)} / ${(m.diskTotalGb ?? server.limits.diskMb / 1024).toFixed(1)} GB`);
-      set('net', `${(m.networkMbps ?? 0).toFixed(2)} Mbps`, m.uptimeMs ? `up ${fmt.duration(m.uptimeMs)}` : '&nbsp;');
+      set('cpu', `${(r.cpu ?? 0).toFixed(0)}%`, `${server.limits.cpu} cores`);
+      set('ram', `${(r.ram?.pct ?? 0).toFixed(0)}%`, `${(r.ram?.usedMb ?? 0).toFixed(0)} / ${r.ram?.totalMb || server.limits.ramMb} MB`);
+      set('disk', `${(r.disk?.pct ?? 0).toFixed(0)}%`, `${(r.disk?.usedGb ?? 0).toFixed(2)} / ${(r.disk?.totalGb ?? server.limits.diskMb / 1024).toFixed(1)} GB`);
+      set('net', `${((r.networkIn ?? 0) + (r.networkOut ?? 0)).toFixed(2)} Mbps`, r.uptimeMs ? `up ${fmt.duration(r.uptimeMs)}` : '&nbsp;');
     }
 
     function renderTypeSummary(s) {
@@ -118,30 +116,25 @@
     }
     const kv = (k, v) => `<div class="glass rounded-xl p-3"><p class="text-slate-500 text-xs">${k}</p><p class="font-semibold mt-0.5">${v}</p></div>`;
 
-    // Initial detail + metrics
+    // Static detail (uuid/env/software) from the API; live status+metrics from
+    // the shared runtime store so Overview and Console never disagree.
     let detail = server;
     try { detail = (await api.get(`/servers/${id}`)).server; } catch { /* keep base */ }
     renderConn(detail); renderPower(detail); renderTypeSummary(detail);
-    try { renderMetrics(await api.get(`/monitoring/${id}`)); } catch { /* offline */ }
 
-    // Live updates (named handlers so the SPA router can detach them on leave)
-    const onMetrics = (m) => { if (m.serverId === id) renderMetrics(m); };
-    const onStatus = async (e) => {
-      if (e.serverId !== id) return;
-      try { detail = (await api.get(`/servers/${id}`)).server; } catch { detail.state = e.state; }
-      document.getElementById('ov-state').innerHTML = stateBadge(detail.state);
-      const cs = document.getElementById('conn-state'); if (cs) cs.outerHTML = `<span id="conn-state">${stateBadge(detail.state)}</span>`;
-      renderPower(detail);
-    };
-    realtime.on('metrics:server', onMetrics);
-    realtime.on('server:status', onStatus);
-    realtime.emit('subscribe:server', id);
+    const store = window.RuntimeStore;
+    store.track(id);
+    store.hydrate(id);
+    let lastStatus = null;
+    const unsub = store.subscribe(id, (r) => {
+      renderMetrics(r);
+      const state = r.status || detail.state;
+      document.getElementById('ov-state').innerHTML = stateBadge(state);
+      const cs = document.getElementById('conn-state'); if (cs) cs.outerHTML = `<span id="conn-state">${stateBadge(state)}</span>`;
+      if (state !== lastStatus) { lastStatus = state; detail.state = state; renderPower(detail); }
+    });
 
-    // Cleanup on tab switch: drop listeners + unsubscribe (no leaks/dupes).
-    return () => {
-      realtime.off('metrics:server', onMetrics);
-      realtime.off('server:status', onStatus);
-      realtime.emit('unsubscribe:server', id);
-    };
+    // Cleanup on tab switch: unsubscribe from the store (channel ref-counted).
+    return () => { unsub(); store.untrack(id); };
   };
 })();
