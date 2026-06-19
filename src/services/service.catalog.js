@@ -13,7 +13,7 @@
 // Runtime images (yolks) — node & python are cached on the host.
 const NODE_IMAGE = process.env.NODE_IMAGE || 'ghcr.io/ptero-eggs/yolks:nodejs_21';
 const PYTHON_IMAGE = process.env.PYTHON_IMAGE || 'ghcr.io/pterodactyl/yolks:python_3.11';
-const STATIC_IMAGE = process.env.STATIC_IMAGE || 'ghcr.io/pterodactyl/yolks:nodejs_21';
+const STATIC_IMAGE = process.env.STATIC_IMAGE || 'ghcr.io/ptero-eggs/yolks:nodejs_21';
 
 // ── Verbatim startup commands (do NOT modify) ─────────────────────────
 const NODE_DISCORD_STARTUP =

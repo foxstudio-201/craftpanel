@@ -45,14 +45,14 @@ export function publicRecord(d) {
   return safe;
 }
 
-export async function createDatabase({ engine, name, ownerId }, actor) {
+export async function createDatabase({ engine, name, ownerId, serverId = null }, actor) {
   const spec = ENGINES[engine];
   if (!spec) throw ApiError.badRequest('Unsupported engine');
   if (!/^[a-zA-Z][a-zA-Z0-9_]{0,31}$/.test(name || '')) throw ApiError.badRequest('Invalid database name (letters, digits, underscore)');
 
   const uuid = crypto.randomUUID();
   const record = {
-    id: nanoid(10), uuid, engine, name, ownerId,
+    id: nanoid(10), uuid, engine, name, ownerId, serverId,
     username: engine === 'postgres' ? (name || 'app') : 'app',
     password: pw(), rootPassword: pw(),
     host: config.network.internalIp || '127.0.0.1',
@@ -76,7 +76,7 @@ export async function createDatabase({ engine, name, ownerId }, actor) {
       RestartPolicy: { Name: 'unless-stopped' },
       Memory: 1024 * 1024 * 1024,
     },
-    Labels: { 'craftpanel.managed': 'true', 'craftpanel.type': 'database', 'craftpanel.uuid': uuid },
+    Labels: { 'multihost.managed': 'true', 'multihost.type': 'database', 'multihost.uuid': uuid },
   });
   await container.start();
 

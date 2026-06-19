@@ -18,24 +18,18 @@ function authorizedServer(req) {
   return server;
 }
 
-function parseLevel(line) {
-  if (/\b(ERROR|SEVERE)\b/.test(line)) return 'ERROR';
-  if (/\bWARN/.test(line)) return 'WARN';
-  return 'INFO';
-}
-
-/** Recent real container logs. */
+/** Recent real container logs — raw (ANSI preserved) for terminal replay. */
 export const getLogs = asyncHandler(async (req, res) => {
   const server = authorizedServer(req);
-  if (!server.dockerId) return ok(res, { logs: [] }, 'Console logs');
+  if (!server.dockerId) return ok(res, { content: '', lines: [] }, 'Console logs');
   let lines = [];
   try {
     lines = await docker.getRecentLogs(server.dockerId, 300);
   } catch (err) {
     if (err.statusCode !== 404) throw err;
   }
-  const logs = lines.map((text) => ({ ts: new Date().toISOString(), level: parseLevel(text), text: text.replace(/\r$/, '') }));
-  return ok(res, { logs }, 'Console logs');
+  // Raw lines joined back into a stream the xterm frontend replays verbatim.
+  return ok(res, { content: lines.join('\n'), lines }, 'Console logs');
 });
 
 /**

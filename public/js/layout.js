@@ -1,7 +1,13 @@
 /* Builds the authenticated app shell: injects the sidebar + navbar partials,
    wires navigation, the user menu, notifications and mobile behaviour.
 
-   A page opts in by including:
+   Two entry points share the same chrome (navbar + notifications + mobile):
+     • Layout.mount(render)        — global pages, static sidebar partial.
+     • Layout.mountService(opts,r) — per-service shell at /service/:id/<tab>,
+                                     with a sidebar generated from the service
+                                     type registry (see service-sidebar.js).
+
+   A global page opts in by including:
      <div class="app-shell" data-page="dashboard" data-title="Dashboard" data-subtitle="…"></div>
    and calling Layout.mount(renderFn). */
 (function () {
@@ -10,6 +16,38 @@
   async function fetchPartial(path) {
     const res = await fetch(path);
     return res.text();
+  }
+
+  /** Assemble the shared chrome around a sidebar node and return the content host. */
+  function buildChrome(shell, sidebar, navbar, { title, subtitle }, user) {
+    const backdrop = el('<div class="sidebar-backdrop"></div>');
+    const mainCol = el('<div class="main-col"></div>');
+    const content = el('<main class="content fade-in"></main>');
+    mainCol.appendChild(navbar);
+    mainCol.appendChild(content);
+
+    shell.appendChild(sidebar);
+    shell.appendChild(backdrop);
+    shell.appendChild(mainCol);
+
+    // Page heading
+    $('[data-page-title]', navbar).textContent = title || 'Dashboard';
+    if (subtitle) $('[data-page-subtitle]', navbar).textContent = subtitle;
+
+    // User info
+    const initials = (user.username || '?').slice(0, 2).toUpperCase();
+    $('[data-user-avatar]', navbar).textContent = initials;
+    $('[data-user-name]', navbar).textContent = user.username;
+    $('[data-user-role]', navbar).textContent = user.role;
+
+    wireMenus(navbar);
+    wireMobile(sidebar, backdrop);
+    wireLogout();
+    wireNotifications(navbar);
+    wireSocketStatus(sidebar);
+
+    window.lucide?.createIcons({ nameAttr: 'data-lucide' });
+    return content;
   }
 
   async function mount(render) {
@@ -32,51 +70,110 @@
 
     const sidebar = el(sidebarHtml);
     const navbar = el(navbarHtml);
-    const backdrop = el('<div class="sidebar-backdrop"></div>');
-
-    const mainCol = el('<div class="main-col"></div>');
-    const content = el('<main class="content fade-in"></main>');
-    mainCol.appendChild(navbar);
-    mainCol.appendChild(content);
-
-    shell.appendChild(sidebar);
-    shell.appendChild(backdrop);
-    shell.appendChild(mainCol);
 
     // Active nav link
     const active = $(`[data-nav="${page}"]`, sidebar);
     if (active) active.classList.add('active');
 
-    // Page heading
-    $('[data-page-title]', navbar).textContent = shell.dataset.title || 'Dashboard';
-    if (shell.dataset.subtitle) $('[data-page-subtitle]', navbar).textContent = shell.dataset.subtitle;
-
-    // User info
-    const initials = (user.username || '?').slice(0, 2).toUpperCase();
-    $('[data-user-avatar]', navbar).textContent = initials;
-    $('[data-user-name]', navbar).textContent = user.username;
-    $('[data-user-role]', navbar).textContent = user.role;
-
     // Reveal admin-only navigation for admins.
     if (window.auth.can('admin')) {
-      $$('[data-admin-only]', sidebar).forEach((el) => el.classList.remove('hidden'));
+      $$('[data-admin-only]', sidebar).forEach((node) => node.classList.remove('hidden'));
     }
 
-    wireMenus(navbar);
-    wireMobile(sidebar, backdrop);
-    wireLogout();
-    wireNotifications(navbar);
-    wireSocketStatus(sidebar);
+    const content = buildChrome(shell, sidebar, navbar, { title: shell.dataset.title, subtitle: shell.dataset.subtitle }, user);
 
-    window.lucide?.createIcons({ nameAttr: 'data-lucide' });
-
-    // Render the page body
     try {
       await render(content, user);
     } catch (err) {
       content.innerHTML = `<div class="glass-card glass p-8 text-center text-red-300">Failed to load page: ${escapeHtml(err.message)}</div>`;
     }
     window.lucide?.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  /**
+   * Per-service shell. Resolves the service from the URL id, builds the dynamic
+   * sidebar for its type, validates the requested tab against the type's page
+   * manifest (redirecting to overview when the tab is not applicable), then runs
+   * the tab renderer with (content, user, server, type).
+   */
+  async function mountService({ id, tab }) {
+    const user = await window.auth.requireAuth();
+    if (!user) return;
+
+    const shell = $('.app-shell');
+    const navbar = el(await fetchPartial('/components/navbar.html'));
+
+    // Load the service-type registry + the service record.
+    await window.ServiceRegistry.load();
+    let server;
+    try {
+      server = (await api.get(`/servers/${id}`)).server;
+    } catch (err) {
+      const c = buildChrome(shell, window.ServiceSidebar.empty(), navbar, { title: 'Service', subtitle: '' }, user);
+      c.innerHTML = `<div class="glass-card glass p-8 text-center text-red-300">${escapeHtml(err.message || 'Service not found')}</div>`;
+      return;
+    }
+
+    const type = window.ServiceRegistry.typeOf(server);
+    const pages = window.ServiceRegistry.pagesFor(type).map((p) => p.key);
+    const labelFor = window.ServiceRegistry.labelFor(type);
+
+    // Build the shell ONCE (sidebar + navbar + socket). Tab changes only swap
+    // <main> — no document reload, no socket reconnect (SPA within the shell).
+    const sidebar = window.ServiceSidebar.build({ server, type, tab });
+    const content = buildChrome(shell, sidebar, navbar, { title: server.name, subtitle: labelFor }, user);
+    const subtitleEl = $('[data-page-subtitle]', navbar);
+
+    let currentCleanup = null;   // teardown of the active tab (listeners/subscriptions/xterm)
+
+    async function renderTab(target, { push = true } = {}) {
+      let next = pages.includes(target) ? target : 'overview';
+      const url = `/service/${id}/${next}`;
+      if (push) {
+        if (location.pathname !== url) history.pushState({ tab: next }, '', url);
+      } else if (next !== target) {
+        history.replaceState({ tab: next }, '', url); // coerced an invalid tab → fix the URL
+      }
+
+      // Tear down the previous tab BEFORE rendering the next (one set of
+      // listeners + one channel subscription at a time — no leaks/duplicates).
+      if (currentCleanup) { try { currentCleanup(); } catch { /* ignore */ } currentCleanup = null; }
+
+      $$('[data-nav]', sidebar).forEach((a) => a.classList.toggle('active', a.dataset.nav === next));
+      const meta = window.ServiceRegistry.pageMeta(next);
+      if (subtitleEl) subtitleEl.textContent = `${labelFor} · ${meta?.label || next}`;
+
+      content.innerHTML = '';
+      const fn = window.ServiceTabs && window.ServiceTabs[next];
+      if (typeof fn !== 'function') {
+        content.innerHTML = `<div class="glass glass-card p-10 text-center text-slate-400">This page isn't available for this service.</div>`;
+        return;
+      }
+      try {
+        const cleanup = await fn({ content, user, server, type });
+        currentCleanup = typeof cleanup === 'function' ? cleanup : null;
+      } catch (err) {
+        content.innerHTML = `<div class="glass-card glass p-8 text-center text-red-300">Failed to load page: ${escapeHtml(err.message)}</div>`;
+      }
+      window.lucide?.createIcons({ nameAttr: 'data-lucide' });
+    }
+
+    // Intercept clicks on THIS service's tab links → SPA navigate (sidebar +
+    // any in-content links). Links elsewhere (/services, /marketplace, admin)
+    // are left alone → normal load.
+    const tabLink = new RegExp(`^/service/${id}/([^/?#]+)/?$`);
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest('a');
+      if (!a || a.target === '_blank' || e.metaKey || e.ctrlKey) return;
+      const m = (a.getAttribute('href') || '').match(tabLink);
+      if (m && pages.includes(m[1])) { e.preventDefault(); renderTab(m[1]); }
+    });
+    window.addEventListener('popstate', () => {
+      const m = location.pathname.match(/^\/service\/[^/]+\/([^/?#]+)/);
+      renderTab(m ? m[1] : 'overview', { push: false });
+    });
+
+    await renderTab(tab, { push: false });
   }
 
   function toggle(panel) {
@@ -159,5 +256,5 @@
     load();
   }
 
-  window.Layout = { mount };
+  window.Layout = { mount, mountService };
 })();

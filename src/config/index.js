@@ -12,6 +12,18 @@ const num = (value, fallback) => {
   return Number.isFinite(n) ? n : fallback;
 };
 
+const list = (value, fallback = []) =>
+  (value ? String(value).split(',').map((s) => s.trim()).filter(Boolean) : fallback);
+
+// Dedicated workspace, isolated from Pterodactyl (/var/lib|/etc|/var/www/pterodactyl).
+// Falls back to the in-project ./storage tree when the dedicated root is unset
+// or not writable, so the panel still runs unprivileged.
+const WORKSPACE = process.env.MULTIHOST_ROOT || '';
+const workspacePath = (sub, projectDefault) => {
+  if (!WORKSPACE) return path.resolve(ROOT_DIR, projectDefault);
+  return path.join(WORKSPACE, sub);
+};
+
 export const config = {
   env: process.env.NODE_ENV || 'development',
   isProd: (process.env.NODE_ENV || 'development') === 'production',
@@ -33,12 +45,15 @@ export const config = {
     password: process.env.ADMIN_PASSWORD || 'admin12345',
   },
 
-  filesRoot: path.resolve(ROOT_DIR, process.env.FILES_ROOT || 'storage/servers'),
+  // Dedicated, isolated workspace root (empty = use in-project ./storage).
+  workspaceRoot: WORKSPACE,
+  filesRoot: process.env.FILES_ROOT ? path.resolve(ROOT_DIR, process.env.FILES_ROOT) : workspacePath('data', 'storage/servers'),
   metricsInterval: num(process.env.METRICS_INTERVAL, 2000),
 
   // ── Real infrastructure ────────────────────────────────────────────
-  // Root directory that holds each server's data volume (<root>/<uuid>).
-  volumesRoot: path.resolve(ROOT_DIR, process.env.VOLUMES_ROOT || 'storage/volumes'),
+  // Root directory that holds each service's data volume (<root>/<uuid>).
+  volumesRoot: process.env.VOLUMES_ROOT ? path.resolve(ROOT_DIR, process.env.VOLUMES_ROOT) : workspacePath('services', 'storage/volumes'),
+  backupsRoot: process.env.BACKUPS_ROOT ? path.resolve(ROOT_DIR, process.env.BACKUPS_ROOT) : workspacePath('backups', 'storage/backups'),
 
   docker: {
     socketPath: process.env.DOCKER_SOCKET || '/var/run/docker.sock',
@@ -46,14 +61,19 @@ export const config = {
     image: process.env.MC_IMAGE || 'itzg/minecraft-server:latest',
     // Proxy image (Velocity/Waterfall/BungeeCord).
     proxyImage: process.env.MC_PROXY_IMAGE || 'itzg/mc-proxy:latest',
-    // Containers join this user-defined bridge network (created on boot).
-    network: process.env.DOCKER_NETWORK || 'craftpanel_net',
+    // Project-dedicated bridge network — NEVER Pterodactyl's pterodactyl_nw.
+    network: process.env.DOCKER_NETWORK || 'multihost_net',
+    // Label stamped on every project-managed container/network for isolation.
+    label: 'multihost.managed',
   },
 
-  // Port pool handed out to new servers (avoids the host MC on 25565).
+  // Centralized port allocator — a dedicated pool kept clear of Pterodactyl.
   ports: {
-    min: num(process.env.PORT_RANGE_MIN, 25700),
-    max: num(process.env.PORT_RANGE_MAX, 25799),
+    min: num(process.env.PORT_RANGE_MIN, 26000),
+    max: num(process.env.PORT_RANGE_MAX, 26999),
+    // Ports that must never be allocated (Pterodactyl Panel/Wings/SFTP/DB/Redis
+    // + this panel + cloudflared). Extend via RESERVED_PORTS=comma,list.
+    reserved: list(process.env.RESERVED_PORTS).map(Number).filter(Boolean),
   },
 
   // Network identity surfaced on the infrastructure page.
@@ -61,6 +81,41 @@ export const config = {
     publicIp: process.env.PUBLIC_IP || '',
     internalIp: process.env.INTERNAL_IP || '',
     domain: process.env.DOMAIN || '',
+    // Optional wildcard base domain for auto-generated subdomains (e.g. *.apps.example.com).
+    baseDomain: process.env.BASE_DOMAIN || '',
+  },
+
+  // Cloudflare Tunnel integration. The panel READS the existing tunnel and, by
+  // default, only PROPOSES merged ingress (never writes /etc or restarts the
+  // service). Set CF_APPLY_MODE=sudo + install bin/cf-apply.sh to enable apply.
+  cloudflared: {
+    enabled: (process.env.CF_ENABLED ?? 'true') !== 'false',
+    configPath: process.env.CF_CONFIG || '/etc/cloudflared/config.yml',
+    tunnelId: process.env.CF_TUNNEL_ID || '',          // auto-read from config when blank
+    service: process.env.CF_SERVICE || 'cloudflared',  // systemd unit name
+    baseDomain: process.env.BASE_DOMAIN || '',         // e.g. voxelx.io.vn
+    appsSubdomain: process.env.CF_APPS_SUBDOMAIN || 'apps', // *.apps.<baseDomain>
+    applyMode: process.env.CF_APPLY_MODE || 'propose',  // 'propose' | 'sudo'
+    applyHelper: process.env.CF_APPLY_HELPER || path.join(ROOT_DIR, 'bin', 'cf-apply.sh'),
+    // Where the panel writes the proposed merged config (never /etc directly).
+    proposedConfig: process.env.CF_PROPOSED || (WORKSPACE ? path.join(WORKSPACE, 'docker', 'cloudflared-desired.yml') : path.resolve(ROOT_DIR, 'storage/cloudflared-desired.yml')),
+  },
+
+  // Caddy reverse proxy — DISABLED by default on this host: ports 80/443 are
+  // owned by nginx (Pterodactyl Panel) and Wings. Ingress is via Cloudflare.
+  caddy: {
+    enabled: (process.env.CADDY_ENABLED ?? 'false') === 'true',
+    image: process.env.CADDY_IMAGE || 'caddy:2',
+    containerName: process.env.CADDY_CONTAINER || 'multihost-caddy',
+    // Admin API the panel POSTs config to (published from the container).
+    adminUrl: process.env.CADDY_ADMIN_URL || 'http://127.0.0.1:2019',
+    adminBind: process.env.CADDY_ADMIN_BIND || '127.0.0.1', // host bind for :2019
+    // Default to non-privileged ports so Caddy can NEVER collide with nginx(80)
+    // or Wings(443) even if explicitly re-enabled on this host.
+    httpPort: num(process.env.CADDY_HTTP_PORT, 8080),
+    httpsPort: num(process.env.CADDY_HTTPS_PORT, 8443),
+    // ACME contact for Let's Encrypt (optional but recommended in prod).
+    acmeEmail: process.env.ACME_EMAIL || '',
   },
 
   sftp: {

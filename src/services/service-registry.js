@@ -32,6 +32,7 @@ export const PAGE_META = {
   backups:     { label: 'Backups',     icon: 'archive' },
   domains:     { label: 'Domains',     icon: 'globe' },
   ssl:         { label: 'SSL',         icon: 'lock' },
+  build:       { label: 'Build',       icon: 'hammer' },
   activity:    { label: 'Activity',    icon: 'scroll-text' },
   settings:    { label: 'Settings',    icon: 'settings' },
 };
@@ -97,8 +98,8 @@ export const TYPES = {
     label: 'Static Website',
     icon: 'globe',
     description: 'Serve a static site or SPA (HTML, React, Vue).',
-    pages: ['overview', 'files', 'domains', 'ssl', 'startup', 'network', 'activity', 'settings'],
-    features: { console: false, rcon: false, players: false, plugins: false, databases: false, environment: true, domains: true, ssl: true, versions: false, build: true, packages: null },
+    pages: ['overview', 'files', 'domains', 'ssl', 'build', 'network', 'activity', 'settings'],
+    features: { console: false, rcon: false, players: false, plugins: false, databases: false, environment: true, domains: true, ssl: true, versions: false, build: true, publish: true, packages: null },
     defaults: { cpu: 0.5, ramMb: 512, diskMb: 2048 },
   },
 };

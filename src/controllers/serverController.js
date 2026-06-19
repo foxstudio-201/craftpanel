@@ -63,6 +63,21 @@ export const createServer = asyncHandler(async (req, res) => {
   return created(res, { server: await svc.toClient(server, { detail: true }) }, 'Server created & installed');
 });
 
+/** Update editable service identity: name, description, and (admin) owner. */
+export const updateServer = asyncHandler(async (req, res) => {
+  const server = authorizedServer(req);
+  const { name, description, ownerId } = req.body;
+  if (typeof name === 'string' && name.trim()) server.name = name.trim();
+  if (typeof description === 'string') server.description = description;
+  if (ownerId && ownerId !== server.ownerId) {
+    if (!isStaff(req.user)) throw ApiError.forbidden('Only staff can transfer ownership');
+    if (!db.data.users.find((u) => u.id === ownerId)) throw ApiError.badRequest('Owner does not exist');
+    server.ownerId = ownerId;
+  }
+  db.save();
+  return ok(res, { server: await svc.toClient(server, { detail: true }) }, 'Service updated');
+});
+
 export const powerAction = asyncHandler(async (req, res) => {
   const server = authorizedServer(req);
   const server2 = await svc.power(server, req.body.action, actor(req));

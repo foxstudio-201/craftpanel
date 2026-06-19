@@ -25,7 +25,7 @@ const empty = (server) => ({
   status: 'stopped',
   cpu: 0, ramPercent: 0, ramUsedMb: 0, ramTotalMb: server.limits?.ramMb || 0,
   diskPercent: 0, diskUsedGb: 0, diskTotalGb: (server.limits?.diskMb || 0) / 1024,
-  networkMbps: 0, tps: 0, onlinePlayers: 0, maxPlayers: server.maxPlayers || 0,
+  networkMbps: 0, netInMbps: 0, netOutMbps: 0, tps: 0, onlinePlayers: 0, maxPlayers: server.maxPlayers || 0,
   uptimeMs: 0, timestamp: Date.now(),
 });
 
@@ -47,16 +47,18 @@ async function sampleServer(server) {
   let stats;
   try { stats = await docker.statsOnce(server.dockerId); } catch { return empty(server); }
 
-  // Network rate (bytes delta → Mbps)
+  // Network rate (bytes delta → Mbps), split into IN (rx) and OUT (tx).
   const nowTs = Date.now();
   const totalNet = stats.netRxBytes + stats.netTxBytes;
-  let mbps = 0;
+  let mbps = 0, inMbps = 0, outMbps = 0;
   if (st.lastNet != null && nowTs > st.lastNetAt) {
-    const deltaBytes = Math.max(0, totalNet - st.lastNet);
     const deltaSec = (nowTs - st.lastNetAt) / 1000;
-    mbps = (deltaBytes * 8) / 1e6 / deltaSec;
+    const rate = (bytes) => (Math.max(0, bytes) * 8) / 1e6 / deltaSec;
+    mbps = rate(totalNet - st.lastNet);
+    inMbps = rate(stats.netRxBytes - (st.lastRx ?? stats.netRxBytes));
+    outMbps = rate(stats.netTxBytes - (st.lastTx ?? stats.netTxBytes));
   }
-  st.lastNet = totalNet;
+  st.lastNet = totalNet; st.lastRx = stats.netRxBytes; st.lastTx = stats.netTxBytes;
   st.lastNetAt = nowTs;
 
   const diskPercent = pctDisk(st, server);
@@ -91,6 +93,8 @@ async function sampleServer(server) {
     diskUsedGb: +(st.disk / 1e9).toFixed(2),
     diskTotalGb: +(server.limits.diskMb / 1024).toFixed(1),
     networkMbps: +mbps.toFixed(1),
+    netInMbps: +inMbps.toFixed(2),
+    netOutMbps: +outMbps.toFixed(2),
     tps,
     onlinePlayers: players,
     maxPlayers: server.maxPlayers,

@@ -66,10 +66,9 @@ Layout.mount(async (content) => {
                <button data-action="restart" class="btn btn-sm btn-ghost"><i data-lucide="rotate-cw" class="w-4 h-4"></i></button>
                <button data-action="kill" class="btn btn-sm btn-danger"><i data-lucide="zap" class="w-4 h-4"></i></button>`
             : `<button data-action="start" class="btn btn-sm btn-primary" ${s.suspended ? 'disabled' : ''}><i data-lucide="play" class="w-4 h-4"></i> Start</button>`}
-          <a href="/console?server=${s.id}" class="btn btn-sm btn-ghost"><i data-lucide="terminal" class="w-4 h-4"></i></a>
-          <a href="/files?server=${s.id}" class="btn btn-sm btn-ghost"><i data-lucide="folder" class="w-4 h-4"></i></a>
-          <button data-action="backups" class="btn btn-sm btn-ghost"><i data-lucide="archive" class="w-4 h-4"></i></button>
-          <button data-action="more" class="btn btn-sm btn-ghost"><i data-lucide="more-horizontal" class="w-4 h-4"></i></button>
+          <a href="/service/${s.id}/console" class="btn btn-sm btn-ghost"><i data-lucide="terminal" class="w-4 h-4"></i></a>
+          <a href="/service/${s.id}/files" class="btn btn-sm btn-ghost"><i data-lucide="folder" class="w-4 h-4"></i></a>
+          <a href="/service/${s.id}/overview" class="btn btn-sm btn-ghost ml-auto"><i data-lucide="settings" class="w-4 h-4"></i> Manage</a>
         </div>
       </div>`;
   }

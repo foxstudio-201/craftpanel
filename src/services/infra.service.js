@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import config from '../config/index.js';
 import db from '../data/store.js';
 import * as docker from './docker.service.js';
+import * as caddy from './caddy.service.js';
 
 function diskUsage(dir) {
   try {
@@ -89,10 +90,12 @@ export function getAllocations() {
 export async function getOverview() {
   const node = getNodeStatus();
   const dockerStatus = await getDockerStatus().catch((e) => ({ available: false, message: e.message }));
+  const caddyStatus = await caddy.status().catch(() => ({ enabled: false }));
   return {
     node,
     docker: dockerStatus,
     network: getNetworkIdentity(),
+    proxy: caddyStatus,
     sftp: { enabled: config.sftp.enabled, host: config.sftp.publicHost || getNetworkIdentity().internalIp, port: config.sftp.port, status: config.sftp.enabled ? 'online' : 'disabled' },
     ports: { range: `${config.ports.min}-${config.ports.max}`, allocated: getAllocations() },
   };

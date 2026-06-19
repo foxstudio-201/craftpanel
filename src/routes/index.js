@@ -16,6 +16,7 @@ import { keyRouter, v1Router } from './api.routes.js';
 import scheduleRoutes from './schedule.routes.js';
 import networkRoutes from './network.routes.js';
 import domainRoutes from './domain.routes.js';
+import infraRoutes from './infra.routes.js';
 
 const router = Router();
 
@@ -40,5 +41,6 @@ router.use('/v1', v1Router);
 router.use('/schedules', scheduleRoutes);
 router.use('/network', networkRoutes);
 router.use('/domains', domainRoutes);
+router.use('/infra', infraRoutes);
 
 export default router;

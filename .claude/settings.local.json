@@ -14,7 +14,12 @@
       "Bash(node --check src/controllers/envController.js)",
       "Bash(node --check src/services/service.catalog.js)",
       "Bash(node --check src/routes/server.routes.js)",
-      "Bash(node -e \"import\\('./src/services/service.catalog.js'\\).then\\(m=>{console.log\\('node express startup:', m.SERVICES.node.templates.express.startup.slice\\(0,60\\)\\); console.log\\('OK catalog import'\\)}\\)\")"
+      "Bash(node -e \"import\\('./src/services/service.catalog.js'\\).then\\(m=>{console.log\\('node express startup:', m.SERVICES.node.templates.express.startup.slice\\(0,60\\)\\); console.log\\('OK catalog import'\\)}\\)\")",
+      "Bash(node --check src/app.js)",
+      "Bash(node --check src/server.js)",
+      "Bash(node --check src/controllers/serverController.js)",
+      "Bash(node --check src/services/service-registry.js)",
+      "Bash(node -e \"import\\('./src/services/service-registry.js'\\).then\\(m=>{const r=m.publicRegistry\\(\\);const st=r.types.find\\(t=>t.key==='static'\\);console.log\\('static pages:',st.pages.map\\(p=>p.key\\).join\\(','\\)\\);console.log\\('static features.build/publish:',st.features.build,st.features.publish\\);console.log\\('build meta:',JSON.stringify\\(r.pageMeta.build\\)\\);}\\)\")"
     ]
   }
 }

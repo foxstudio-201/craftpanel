@@ -8,15 +8,17 @@ import { initSockets } from './sockets/index.js';
 import { seed } from './data/seed.js';
 import { startSftpServer } from './sftp/server.js';
 import * as docker from './services/docker.service.js';
+import * as caddy from './services/caddy.service.js';
 import { initQueue } from './services/queue.service.js';
 import { initScheduler } from './services/schedule.service.js';
 import logger from './utils/logger.js';
 
 async function bootstrap() {
-  // Storage layout for volumes and backups.
-  fs.mkdirSync(config.volumesRoot, { recursive: true });
-  fs.mkdirSync(path.resolve(config.volumesRoot, '..', 'backups'), { recursive: true });
-  fs.mkdirSync(config.filesRoot, { recursive: true });
+  // Storage layout — dedicated, isolated workspace (never Pterodactyl dirs).
+  for (const dir of [config.volumesRoot, config.backupsRoot, config.filesRoot]) {
+    try { fs.mkdirSync(dir, { recursive: true }); }
+    catch (e) { logger.warn(`Could not create ${dir}: ${e.message}`); }
+  }
 
   await seed();
 
@@ -26,6 +28,14 @@ async function bootstrap() {
       await docker.ensureNetwork();
       const info = await docker.engineInfo();
       logger.success(`Docker engine ${info.serverVersion} ready (${info.cpus} CPU / ${Math.round(info.memoryBytes / 1e9)}GB)`);
+
+      // Optional internal Caddy (DISABLED by default; ingress is via Cloudflare).
+      if (config.caddy.enabled) {
+        try {
+          const c = await caddy.ensureCaddy();
+          if (c.enabled) { await caddy.reconcile(); logger.success('Caddy reverse proxy ready'); }
+        } catch (err) { logger.warn('Caddy bring-up warning: ' + err.message); }
+      }
     } catch (err) {
       logger.warn('Docker setup warning: ' + err.message);
     }

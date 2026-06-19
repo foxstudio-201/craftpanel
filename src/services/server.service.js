@@ -18,12 +18,14 @@ import logger from '../utils/logger.js';
 import ApiError from '../utils/ApiError.js';
 import * as docker from './docker.service.js';
 import * as mc from './minecraft.service.js';
+import * as ports from './ports.service.js';
+import * as cloudflared from './cloudflared.service.js';
 import { SERVICES, getTemplate, isServiceType } from './service.catalog.js';
 import { typeOf, feature } from './service-registry.js';
 import { logActivity } from './activity.service.js';
 import { pushNotification, getIO, onServerStateChange } from '../sockets/index.js';
 
-const backupsRoot = path.resolve(config.volumesRoot, '..', 'backups');
+const backupsRoot = config.backupsRoot;
 
 const find = (id) => db.data.servers.find((s) => s.id === id);
 export { find as findServer };
@@ -111,6 +113,11 @@ export async function syncStatus(server) {
   }
 
   server.state = state;
+  // Keep the runtime session consistent with the real container state: a running
+  // container always has a session id (covers panel restarts mid-run); any
+  // terminal state destroys it so the live console clears.
+  if (state === 'running') { if (!server.runtimeId) server.runtimeId = crypto.randomUUID(); }
+  else if (state === 'offline' || state === 'crashed') { server.runtimeId = null; }
   return server.state;
 }
 
@@ -133,6 +140,7 @@ export async function toClient(server, { detail = false } = {}) {
     version: server.version,
     state: server.state,
     status: server.state === 'running' ? 'running' : 'stopped',
+    runtimeId: server.runtimeId || null,
     suspended: !!server.suspended,
     installStatus: server.installStatus,
     ownerId: server.ownerId,
@@ -183,7 +191,7 @@ export async function createServer(input, actor) {
 
   const uuid = crypto.randomUUID();
   const { rconPassword, rconPort } = mc.generateServerDefaults();
-  const port = await mc.allocatePort();
+  const port = await ports.allocate();
 
   const server = {
     id: nanoid(10),
@@ -258,7 +266,7 @@ export async function createService(input, actor) {
   if (!db.data.users.find((u) => u.id === ownerId)) throw ApiError.badRequest('Owner does not exist');
 
   const uuid = crypto.randomUUID();
-  const port = await mc.allocatePort();
+  const port = await ports.allocate();
   const env = { ...template.env, ...(input.env || {}) };
 
   const server = {
@@ -310,6 +318,17 @@ export async function createService(input, actor) {
     throw new ApiError(500, `Install failed: ${err.message}`);
   }
 
+  // Static sites are HTTP — auto-propose a tunnel route (best-effort; goes live
+  // when an admin applies on the Infrastructure page). Other types stay private.
+  if (server.serviceType === 'static' && config.cloudflared.enabled && config.cloudflared.baseDomain) {
+    const host = `web-${server.id}.${config.cloudflared.appsSubdomain}.${config.cloudflared.baseDomain}`.toLowerCase();
+    try {
+      await cloudflared.addRoute({ hostname: host, service: `http://localhost:${port}`, serverId: server.id, purpose: 'static' }, actor);
+      server.publicHostname = host;
+      db.save();
+    } catch (err) { logger.warn(`Auto-route for ${server.name} skipped: ${err.message}`); }
+  }
+
   logActivity('server.create', { actor, target: server.name, serverId: server.id, meta: { serviceType: server.serviceType, template: server.template } });
   pushNotification({ type: 'success', title: 'Service deployed', message: `${server.name} (${svc.label}) is installed and ready to start.` });
   return server;
@@ -347,6 +366,11 @@ export async function power(server, action, actor) {
   // as offline (graceful), not crashed.
   server.expectStop = action === 'stop' || action === 'kill';
   if (action === 'start' || action === 'restart') server.expectStop = false;
+
+  // Runtime session: each start/restart begins a NEW session; stop/kill ends it.
+  // The console is tied to this id so it never shows output from a previous run.
+  if (action === 'start' || action === 'restart') server.runtimeId = crypto.randomUUID();
+  else if (action === 'stop' || action === 'kill') server.runtimeId = null;
 
   // Mark a real, time-boxed transition and broadcast it immediately.
   server.transition = TRANSITION[action];
@@ -392,6 +416,11 @@ export async function setSuspended(server, suspended, actor) {
 export async function deleteServer(server, actor) {
   if (server.dockerId) await docker.remove(server.dockerId, { force: true });
   await fsp.rm(mc.volumePath(server.uuid), { recursive: true, force: true }).catch(() => {});
+  // Return the host port(s) to the pool and drop any tunnel routes for it.
+  ports.release(server.allocation?.port, ...(server.allocation?.additionalPorts || []));
+  for (const r of cloudflared.projectRoutes().filter((r) => r.serverId === server.id)) {
+    await cloudflared.removeRoute(r.hostname).catch(() => {});
+  }
   db.data.servers = db.data.servers.filter((s) => s.id !== server.id);
   db.data.backups = db.data.backups.filter((b) => b.serverId !== server.id);
   delete db.data.consoleLogs[server.id];
@@ -403,7 +432,7 @@ export async function deleteServer(server, actor) {
 export async function cloneServer(source, actor) {
   const uuid = crypto.randomUUID();
   const { rconPassword, rconPort } = mc.generateServerDefaults();
-  const port = await mc.allocatePort();
+  const port = await ports.allocate();
 
   const clone = {
     ...structuredClone(source),

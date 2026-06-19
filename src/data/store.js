@@ -30,6 +30,10 @@ const defaultData = {
   schedules: [],
   domains: [],
   queueJobs: [],
+  builds: [],       // static-site build jobs (logs, status, history)
+  deployments: [],  // published build snapshots (for redeploy / rollback)
+  ports: [],        // centralized port allocations { port, purpose, serverId, at }
+  routes: [],       // cloudflared ingress routes proposed/managed by this panel
 };
 
 let data = structuredClone(defaultData);

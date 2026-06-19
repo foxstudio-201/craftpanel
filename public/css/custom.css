@@ -213,6 +213,9 @@ body {
 
 .dot { width: 0.55rem; height: 0.55rem; border-radius: 9999px; display: inline-block; }
 .dot-live { background: #34d399; box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); animation: ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite; }
+.dot-warn { background: #fbbf24; }
+.dot-danger { background: #f87171; }
+.dot-idle { background: #64748b; }
 @keyframes ping { 75%, 100% { box-shadow: 0 0 0 8px rgba(52, 211, 153, 0); } }
 
 /* Layout shell --------------------------------------------------------- */
@@ -290,6 +293,18 @@ body {
 .log-WARN { color: #fcd34d; }
 .log-ERROR { color: #fca5a5; }
 .log-time { color: #5b6685; margin-right: 0.5rem; }
+
+/* xterm.js terminal host (Console tab) --------------------------------- */
+.terminal-host {
+  height: 58vh; min-height: 320px;
+  background: #0b0f17;
+  border-radius: 1rem; padding: 0.6rem 0.75rem;
+  border: 1px solid var(--glass-border);
+  overflow: hidden;
+}
+.terminal-host .xterm { height: 100%; padding: 0; }
+.terminal-host .xterm-viewport::-webkit-scrollbar { width: 10px; }
+.terminal-host .xterm-viewport { scrollbar-width: thin; }
 
 /* Scrollbar ------------------------------------------------------------ */
 ::-webkit-scrollbar { width: 10px; height: 10px; }

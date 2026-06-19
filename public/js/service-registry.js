@@ -20,10 +20,12 @@
   const def = (type) => cache?.byKey?.[type] || cache?.byKey?.minecraft;
   const pagesFor = (type) => def(type)?.pages || [];
   const feature = (type, name) => Boolean(def(type)?.features?.[name]);
+  const featureValue = (type, name) => def(type)?.features?.[name] ?? null;
   const labelFor = (type) => def(type)?.label || type;
   const iconFor = (type) => def(type)?.icon || 'box';
   const versionsFor = (type) => def(type)?.versions || [];
   const templatesFor = (type) => def(type)?.templates || [];
+  const pageMeta = (key) => cache?.pageMeta?.[key] || null;
 
-  window.ServiceRegistry = { load, typeOf, def, pagesFor, feature, labelFor, iconFor, versionsFor, templatesFor, get raw() { return cache; } };
+  window.ServiceRegistry = { load, typeOf, def, pagesFor, feature, featureValue, labelFor, iconFor, versionsFor, templatesFor, pageMeta, get raw() { return cache; } };
 })();

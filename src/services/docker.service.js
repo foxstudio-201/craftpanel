@@ -131,7 +131,7 @@ export async function createContainer(o) {
     Env: o.env || [],
     ExposedPorts: exposed,
     HostConfig: hostConfig,
-    Labels: { 'craftpanel.managed': 'true', 'craftpanel.uuid': o.name },
+    Labels: { 'multihost.managed': 'true', 'multihost.uuid': o.name, ...(o.labels || {}) },
   });
 
   // Attach to the panel's user-defined network (best-effort).
@@ -266,6 +266,43 @@ export async function exec(id, cmd, { timeoutMs = 20000 } = {}) {
   });
 }
 
+/**
+ * Streaming exec: runs a command inside the container and invokes onLine for
+ * each output line as it arrives. Returns { done, destroy } where done resolves
+ * with the real exit code. Used by the build/publish system for live logs.
+ */
+export async function execStream(id, cmd, { onLine } = {}) {
+  const container = getContainer(id);
+  const e = await container.exec({ Cmd: cmd, AttachStdout: true, AttachStderr: true, Tty: false });
+  const stream = await e.start({ hijack: true, stdin: false });
+
+  const out = new PassThrough();
+  const err = new PassThrough();
+  let bufO = '', bufE = '';
+  const pump = (buf, chunk, tag) => {
+    buf += chunk.toString('utf8');
+    const lines = buf.split('\n');
+    const rest = lines.pop();
+    for (const line of lines) onLine?.(line, tag);
+    return rest;
+  };
+  out.on('data', (d) => { bufO = pump(bufO, d, 'stdout'); });
+  err.on('data', (d) => { bufE = pump(bufE, d, 'stderr'); });
+  getDocker().modem.demuxStream(stream, out, err);
+
+  const done = new Promise((resolve, reject) => {
+    stream.on('end', async () => {
+      if (bufO) onLine?.(bufO, 'stdout');
+      if (bufE) onLine?.(bufE, 'stderr');
+      const info = await e.inspect().catch(() => ({}));
+      resolve({ exitCode: info.ExitCode ?? 0 });
+    });
+    stream.on('error', reject);
+  });
+
+  return { done, destroy: () => { try { stream.destroy(); } catch { /* ignore */ } } };
+}
+
 /** Write a line to the container's stdin (used for proxy consoles without RCON). */
 export async function writeStdin(id, text) {
   const container = getContainer(id);
@@ -329,13 +366,13 @@ export function dirSize(dir) {
   return total;
 }
 
-/** List all CraftPanel-managed containers (admin/infra views). */
+/** List all project-managed containers (admin/infra views). */
 export async function listManaged() {
   const d = getDocker();
-  const containers = await d.listContainers({ all: true, filters: { label: ['craftpanel.managed=true'] } });
+  const containers = await d.listContainers({ all: true, filters: { label: ['multihost.managed=true'] } });
   return containers.map((c) => ({
     id: c.Id,
-    uuid: c.Labels['craftpanel.uuid'],
+    uuid: c.Labels['multihost.uuid'] || c.Labels['multihost.serviceId'],
     state: c.State,
     status: c.Status,
     image: c.Image,

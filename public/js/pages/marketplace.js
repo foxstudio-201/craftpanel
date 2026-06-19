@@ -108,9 +108,10 @@ Layout.mount(async (content, user) => {
       if (!body.name) return toastError('Name is required');
       const btn = m.$('#go'); btn.disabled = true; btn.innerHTML = 'Deploying…';
       try {
-        await api.post('/servers', body);
+        const r = await api.post('/servers', body);
         m.close();
         toastSuccess(`${card.name} deployed — assigned to ${users.find((u) => u.id === body.ownerId)?.username}`);
+        if (r.server?.id) location.href = `/service/${r.server.id}/overview`;
       } catch (e) { toastError(e.message); btn.disabled = false; btn.innerHTML = 'Deploy container'; }
     });
   }

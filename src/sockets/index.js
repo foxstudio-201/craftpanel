@@ -10,7 +10,7 @@
  *
  * Channels:
  *   - metrics:overview / metrics:server  live stats
- *   - console:line                        a real log line
+ *   - console:data                        {serverId, data}  raw container output
  *   - console:status                      {serverId, online, reason}  stream state
  *   - server:status                       {serverId, state}           lifecycle
  *   - players:update / notification / activity / announcement / queue:job
@@ -45,21 +45,34 @@ export function pushNotification(notification) {
   return full;
 }
 
-function parseLevel(line) {
-  if (/\b(ERROR|SEVERE|FATAL)\b/.test(line)) return 'ERROR';
-  if (/\bWARN/.test(line)) return 'WARN';
-  return 'INFO';
+/**
+ * Emit raw console output to subscribers. The frontend xterm terminal does all
+ * ANSI parsing, cursor/spinner handling, classification and timestamping — we
+ * forward the container's bytes verbatim (preserving stdout/stderr).
+ */
+export function emitConsoleData(serverId, data) {
+  io?.to(`console:${serverId}`).emit('console:data', { serverId, data });
 }
 
-/** Emit a synthetic console line (command echoes / RCON responses only). */
+/** Echo a command / RCON response into the stream (kept as a real line). */
 export function emitConsoleLine(serverId, line) {
-  const entry = { serverId, ts: new Date().toISOString(), level: line.level || 'INFO', text: line.text };
-  io?.to(`console:${serverId}`).emit('console:line', entry);
-  return entry;
+  const text = (line?.text ?? '');
+  emitConsoleData(serverId, text.endsWith('\n') ? text : text + '\r\n');
+  return { serverId, text };
 }
 
 function emitConsoleStatus(serverId, online, reason) {
   io?.to(`console:${serverId}`).emit('console:status', { serverId, online, reason: reason || null, ts: Date.now() });
+}
+
+/** Emit a real build log line to subscribers of a service's build channel. */
+export function emitBuildLog(serverId, entry) {
+  io?.to(`build:${serverId}`).emit('build:log', { serverId, ...entry });
+}
+
+/** Emit a build lifecycle event ({ buildId, status, ... }) to the build channel. */
+export function emitBuildEvent(serverId, payload) {
+  io?.to(`build:${serverId}`).emit('build:event', { serverId, ...payload });
 }
 
 /** Tear down a server's follow stream (keeps subscribers so it can reopen). */
@@ -90,13 +103,12 @@ export async function openConsoleStream(serverId) {
 
   try {
     const stream = await docker.logStream(server.dockerId, {
-      tail: 250,
-      onLine: (line) => {
-        if (line.trim() === '') return;
-        io?.to(`console:${serverId}`).emit('console:line', {
-          serverId, ts: new Date().toISOString(), level: parseLevel(line), text: line.replace(/\r$/, ''),
-        });
-      },
+      // Live-only: stream output produced AFTER subscription (tail:0) — no history
+      // dump. The console reflects only the current runtime session.
+      tail: 0,
+      // Forward raw bytes (ANSI + carriage returns intact) — the xterm frontend
+      // is the terminal emulator. Never mangle the process output here.
+      onRaw: (chunk) => emitConsoleData(serverId, chunk.toString('utf8')),
     });
     // When the container stops/crashes the follow stream ends — stop immediately.
     const onClose = () => { if (consoleStreams.get(serverId)?.stream === stream) closeConsoleStream(serverId, 'stream-ended'); };
@@ -129,7 +141,8 @@ function removeSubscriber(serverId, socketId) {
 
 /** Called by the server lifecycle so the console reacts instantly to state. */
 export function onServerStateChange(serverId, state) {
-  io?.emit('server:status', { serverId, state });
+  const runtimeId = db.data.servers.find((s) => s.id === serverId)?.runtimeId || null;
+  io?.emit('server:status', { serverId, state, runtimeId });
   if (state === 'running') openConsoleStream(serverId);
   else closeConsoleStream(serverId, state);
 }
@@ -153,6 +166,9 @@ export function initSockets(httpServer) {
     // this would drop early client emits — the cause of the missing log stream.)
     socket.on('subscribe:server', (serverId) => socket.join(`metrics:${serverId}`));
     socket.on('unsubscribe:server', (serverId) => socket.leave(`metrics:${serverId}`));
+
+    socket.on('subscribe:build', (serverId) => socket.join(`build:${serverId}`));
+    socket.on('unsubscribe:build', (serverId) => socket.leave(`build:${serverId}`));
 
     socket.on('subscribe:console', async (serverId) => {
       const server = db.data.servers.find((s) => s.id === serverId);

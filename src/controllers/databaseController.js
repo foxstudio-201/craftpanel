@@ -3,6 +3,7 @@ import ApiError from '../utils/ApiError.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { ok, created } from '../utils/response.js';
 import * as svc from '../services/database.service.js';
+import { typeOf, feature } from '../services/service-registry.js';
 import { ROLE_LEVEL } from '../middleware/roles.js';
 
 const isStaff = (u) => (ROLE_LEVEL[u.role] || 0) >= ROLE_LEVEL.moderator;
@@ -22,6 +23,8 @@ export const engines = asyncHandler(async (_req, res) =>
 export const listDatabases = asyncHandler(async (req, res) => {
   let rows = db.data.databases;
   if (!isStaff(req.user)) rows = rows.filter((d) => d.ownerId === req.user.id);
+  // Per-service view: only databases bound to the given service.
+  if (req.query.serverId) rows = rows.filter((d) => d.serverId === req.query.serverId);
   const databases = [];
   for (const d of rows) { await svc.syncStatus(d); databases.push({ ...svc.publicRecord(d), connection: svc.connectionString(d) }); }
   db.save();
@@ -41,8 +44,16 @@ export const getDatabase = asyncHandler(async (req, res) => {
 
 export const createDatabase = asyncHandler(async (req, res) => {
   if (req.user.role !== 'admin') throw ApiError.forbidden('Only administrators can provision databases');
-  const ownerId = req.body.ownerId && db.data.users.find((u) => u.id === req.body.ownerId) ? req.body.ownerId : req.user.id;
-  const record = await svc.createDatabase({ engine: req.body.engine, name: req.body.name, ownerId }, actor(req));
+  let ownerId = req.body.ownerId && db.data.users.find((u) => u.id === req.body.ownerId) ? req.body.ownerId : req.user.id;
+  let serverId = null;
+  if (req.body.serverId) {
+    const server = db.data.servers.find((s) => s.id === req.body.serverId);
+    if (!server) throw ApiError.badRequest('Service does not exist');
+    if (!feature(typeOf(server), 'databases')) throw ApiError.badRequest('Databases are not supported for this service type');
+    serverId = server.id;
+    ownerId = server.ownerId; // a bound database belongs to the service owner
+  }
+  const record = await svc.createDatabase({ engine: req.body.engine, name: req.body.name, ownerId, serverId }, actor(req));
   return created(res, { database: { ...svc.publicRecord(record), connection: svc.connectionString(record) } }, 'Database provisioned');
 });
 

@@ -100,6 +100,23 @@ async function drain() {
   }
 }
 
+/**
+ * Request cancellation of a job. A queued job is removed immediately; a running
+ * job gets `cancelRequested` set so its handler (e.g. build) can stop the work
+ * and resolve. Returns true if the job was found.
+ */
+export function cancel(jobId) {
+  const queuedIdx = pending.findIndex((j) => j.id === jobId);
+  if (queuedIdx !== -1) {
+    const [job] = pending.splice(queuedIdx, 1);
+    update(job, { status: 'cancelled', finishedAt: new Date().toISOString() });
+    return true;
+  }
+  const job = db.data.queueJobs.find((j) => j.id === jobId);
+  if (job && job.status === 'running') { job.cancelRequested = true; return true; }
+  return false;
+}
+
 export function listJobs(limit = 100) {
   return db.data.queueJobs.slice(0, limit);
 }
