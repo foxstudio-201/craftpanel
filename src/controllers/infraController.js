@@ -8,12 +8,18 @@ import asyncHandler from '../utils/asyncHandler.js';
 import { ok, created } from '../utils/response.js';
 import * as audit from '../services/infra-audit.service.js';
 import * as cloudflared from '../services/cloudflared.service.js';
+import * as tunnel from '../services/tunnel.service.js';
 import { logActivity } from '../services/activity.service.js';
 
 const actor = (req) => ({ id: req.user.id, username: req.user.username });
 
 export const getAudit = asyncHandler(async (_req, res) =>
   ok(res, await audit.fullAudit(), 'Infrastructure audit')
+);
+
+/** Live status of the dedicated CraftPanel tunnels (dash + services). Real systemd state. */
+export const getServicesTunnel = asyncHandler(async (_req, res) =>
+  ok(res, await tunnel.status(), 'Services tunnel status')
 );
 
 export const getTunnel = asyncHandler(async (_req, res) =>

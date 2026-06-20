@@ -101,6 +101,25 @@ export const config = {
     proposedConfig: process.env.CF_PROPOSED || (WORKSPACE ? path.join(WORKSPACE, 'docker', 'cloudflared-desired.yml') : path.resolve(ROOT_DIR, 'storage/cloudflared-desired.yml')),
   },
 
+  // Dedicated CraftPanel Cloudflare tunnels — fully ISOLATED from the Pterodactyl
+  // /etc/cloudflared (pelican) tunnel. The panel OWNS these config files + user
+  // systemd units, so it can add/remove per-service ingress and reload WITHOUT
+  // sudo. dash.voxelx.io.vn fronts the panel; *-{id}.<baseDomain> front services
+  // via a wildcard *.<baseDomain> DNS record. Pterodactyl is never touched here.
+  servicesTunnel: {
+    enabled: (process.env.SERVICES_TUNNEL_ENABLED ?? 'true') !== 'false',
+    baseDomain: process.env.SERVICES_BASE_DOMAIN || 'voxelx.io.vn',
+    // The voxelx-services tunnel config the panel rewrites + the user unit it reloads.
+    configPath: process.env.SERVICES_TUNNEL_CONFIG || path.join(process.env.HOME || '/home/neo', '.cloudflared', 'voxelx-services.yml'),
+    unit: process.env.SERVICES_TUNNEL_UNIT || 'voxelx-services-tunnel.service',
+    dashUnit: process.env.DASH_TUNNEL_UNIT || 'voxelx-dash-tunnel.service',
+    // Public IP for TCP-direct services (Minecraft): tunnels proxy HTTP only, so
+    // mc-{id} is surfaced as a real publicIp:port endpoint, never a fake HTTPS route.
+    publicIp: process.env.PUBLIC_IP || '',
+    // serviceType -> public hostname prefix.
+    prefixes: { discord: 'discord', node: 'node', python: 'python', static: 'web', minecraft: 'mc' },
+  },
+
   // Caddy reverse proxy — DISABLED by default on this host: ports 80/443 are
   // owned by nginx (Pterodactyl Panel) and Wings. Ingress is via Cloudflare.
   caddy: {

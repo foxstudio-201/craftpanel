@@ -8,6 +8,7 @@ router.use(authenticate, authorize('admin'));
 
 router.get('/audit', infra.getAudit);
 router.get('/tunnel', infra.getTunnel);
+router.get('/tunnel/services', infra.getServicesTunnel);
 router.get('/tunnel/diff', infra.getDiff);
 router.post('/routes', infra.addRoute);
 router.post('/routes/validate', infra.validateRoutes);

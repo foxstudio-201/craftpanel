@@ -34,6 +34,7 @@ const defaultData = {
   deployments: [],  // published build snapshots (for redeploy / rollback)
   ports: [],        // centralized port allocations { port, purpose, serverId, at }
   routes: [],       // cloudflared ingress routes proposed/managed by this panel
+  serviceRoutes: [], // dedicated voxelx-services tunnel routes (per-service public access)
 };
 
 let data = structuredClone(defaultData);

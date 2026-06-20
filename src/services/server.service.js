@@ -20,6 +20,7 @@ import * as docker from './docker.service.js';
 import * as mc from './minecraft.service.js';
 import * as ports from './ports.service.js';
 import * as cloudflared from './cloudflared.service.js';
+import * as tunnel from './tunnel.service.js';
 import { SERVICES, getTemplate, isServiceType } from './service.catalog.js';
 import { typeOf, feature } from './service-registry.js';
 import { logActivity } from './activity.service.js';
@@ -350,16 +351,15 @@ export async function createService(input, actor) {
     throw new ApiError(500, `Install failed: ${err.message}`);
   }
 
-  // Static sites are HTTP — auto-propose a tunnel route (best-effort; goes live
-  // when an admin applies on the Infrastructure page). Other types stay private.
-  if (server.serviceType === 'static' && config.cloudflared.enabled && config.cloudflared.baseDomain) {
-    const host = `web-${server.id}.${config.cloudflared.appsSubdomain}.${config.cloudflared.baseDomain}`.toLowerCase();
-    try {
-      await cloudflared.addRoute({ hostname: host, service: `http://localhost:${port}`, serverId: server.id, purpose: 'static' }, actor);
-      server.publicHostname = host;
-      db.save();
-    } catch (err) { logger.warn(`Auto-route for ${server.name} skipped: ${err.message}`); }
-  }
+  // Public access via the dedicated voxelx-services tunnel (fully isolated from
+  // the Pterodactyl tunnel). discord/node/python/web get a live HTTP route
+  // (<type>-{id}.voxelx.io.vn); Minecraft gets a real TCP-direct endpoint. The
+  // route is created here and removed in deleteServer — best-effort, so a tunnel
+  // hiccup never blocks the deployment.
+  try {
+    const route = await tunnel.addServiceRoute(server);
+    if (route) { server.publicHostname = route.hostname; db.save(); }
+  } catch (err) { logger.warn(`Auto-route for ${server.name} skipped: ${err.message}`); }
 
   logActivity('server.create', { actor, target: server.name, serverId: server.id, meta: { serviceType: server.serviceType, template: server.template } });
   pushNotification({ type: 'success', title: 'Service deployed', message: `${server.name} (${svc.label}) is installed and ready to start.` });
@@ -452,6 +452,9 @@ export async function deleteServer(server, actor) {
   await fsp.rm(mc.volumePath(server.uuid), { recursive: true, force: true }).catch(() => {});
   // Return the host port(s) to the pool and drop any tunnel routes for it.
   ports.release(server.allocation?.port, ...(server.allocation?.additionalPorts || []));
+  // Drop the dedicated services-tunnel route (removes its HTTP ingress + reloads).
+  await tunnel.removeServiceRoute(server.id).catch(() => {});
+  // Also drop any legacy propose-mode (shared tunnel) routes for this server.
   for (const r of cloudflared.projectRoutes().filter((r) => r.serverId === server.id)) {
     await cloudflared.removeRoute(r.hostname).catch(() => {});
   }
