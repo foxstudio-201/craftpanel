@@ -208,7 +208,15 @@
     });
 
     // ── Log stream (separate from metrics; gated on a live session) ───
-    const onData = (m) => { if (m.serverId === id && runtimeId) feed(m.data); };
+    // A `replay` message is the backend runtime buffer for the current session
+    // (sent once on (re)subscribe — refresh / tab switch / re-navigation). It is
+    // authoritative: clear first, then write it, so any live chunk that raced in
+    // during attach can't duplicate. Subsequent live chunks append normally.
+    const onData = (m) => {
+      if (m.serverId !== id || !runtimeId) return;
+      if (m.replay) { clearTerminal(); }
+      feed(m.data);
+    };
     const onStatus = (s) => {
       if (s.serverId !== id) return; online = s.online;
       if (!s.online) setBanner(REASONS[s.reason] || 'Stream offline', s.reason === 'crashed' || s.reason === 'stream-error' ? 'error' : 'warn');

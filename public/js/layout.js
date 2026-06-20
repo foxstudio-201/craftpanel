@@ -13,9 +13,156 @@
 (function () {
   const { $, $$, el, fmt, escapeHtml } = window.ui;
 
+  const CHART_CDN = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+
+  /**
+   * Global route table — drives the in-page SPA for the persistent app shell.
+   * Each entry: title/subtitle for the navbar, optional admin guard, the page
+   * module to lazy-load, and any extra deps to ensure first. The page key equals
+   * the sidebar data-nav / data-page value. Service routes (/service/:id/<tab>)
+   * are handled by their own shell (service.html) and are intentionally NOT here.
+   */
+  const ROUTES = {
+    marketplace:    { title: 'Marketplace', subtitle: 'Deploy a new service', module: '/js/pages/marketplace.js' },
+    services:       { title: 'My Services', subtitle: 'All your service instances', module: '/js/pages/services.js', deps: ['/js/service-registry.js'] },
+    dashboard:      { title: 'Overview', subtitle: 'Live server overview', admin: true, module: '/js/pages/dashboard.js', deps: [CHART_CDN] },
+    monitoring:     { title: 'Monitoring', subtitle: 'CPU, RAM, storage & network history', admin: true, module: '/js/pages/monitoring.js', deps: [CHART_CDN] },
+    'api-keys':     { title: 'API', subtitle: 'Keys, scopes, rate limits & documentation', module: '/js/pages/api.js' },
+    activity:       { title: 'Activity', subtitle: 'Your activity log', module: '/js/pages/activity.js' },
+    profile:        { title: 'Profile', subtitle: 'Your account & security', module: '/js/pages/profile.js' },
+    settings:       { title: 'Settings', subtitle: 'Configure your panel', module: '/js/pages/settings.js' },
+    admin:          { title: 'Admin Dashboard', subtitle: 'Infrastructure & user administration', admin: true, module: '/js/pages/admin.js' },
+    infrastructure: { title: 'Infrastructure', subtitle: 'Tunnel, ports, Docker & isolation from Pterodactyl', admin: true, module: '/js/pages/infrastructure.js' },
+    users:          { title: 'Users', subtitle: 'User management', admin: true, module: '/js/pages/users.js' },
+    databases:      { title: 'Databases', subtitle: 'MySQL, MariaDB & PostgreSQL hosting', module: '/js/pages/databases.js' },
+    domains:        { title: 'Domains', subtitle: 'Domain & reverse-proxy manager', admin: true, module: '/js/pages/domains.js' },
+    network:        { title: 'Network', subtitle: 'IP & port allocations', module: '/js/pages/network.js' },
+  };
+
+  const pathOf = (key) => '/' + key;
+  function routeOf(pathname) {
+    const seg = (pathname || '').replace(/^\/+|\/+$/g, '');
+    if (!seg || seg.startsWith('service/')) return null; // service shell handles its own routes
+    const key = seg.split('/')[0];
+    return ROUTES[key] ? key : null;
+  }
+
+  // ── SPA shell state (built once, reused across navigations) ───────────
+  let appState = null;        // { sidebar, navbar, content, user }
+  let currentKey = null;      // active global route key
+  let currentCleanup = null;  // teardown fn returned by the active page (if any)
+  let loadingKey = null;      // route whose module is currently being injected
+  const routeRenderers = {};  // key -> render fn (captured from Layout.mount)
+  const loadedScripts = new Set();
+  const moduleWaiters = {};   // key -> resolve fn for the inject-and-capture promise
+
   async function fetchPartial(path) {
     const res = await fetch(path);
     return res.text();
+  }
+
+  /** Inject a <script> once (cached by src); resolves when it has executed. */
+  function loadScript(src) {
+    if (loadedScripts.has(src)) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src; s.async = false;
+      s.onload = () => { loadedScripts.add(src); resolve(); };
+      s.onerror = () => reject(new Error('Failed to load ' + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  /** Ensure a route's render fn is available (lazy-load deps + module once). */
+  async function ensureRenderer(key) {
+    if (routeRenderers[key]) return routeRenderers[key];
+    const meta = ROUTES[key];
+    for (const dep of meta.deps || []) await loadScript(dep);
+    loadingKey = key;
+    const captured = new Promise((resolve) => { moduleWaiters[key] = resolve; });
+    await loadScript(meta.module);
+    await captured; // the module's Layout.mount(fn) resolves this
+    loadingKey = null;
+    return routeRenderers[key];
+  }
+
+  /** Destroy any Chart.js instances inside a node before it's discarded. */
+  function destroyCharts(node) {
+    if (!window.Chart?.getChart) return;
+    node.querySelectorAll('canvas').forEach((c) => { try { window.Chart.getChart(c)?.destroy(); } catch { /* */ } });
+  }
+
+  function setActive(key) {
+    $$('[data-nav]', appState.sidebar).forEach((a) => a.classList.toggle('active', a.dataset.nav === key));
+  }
+  function setHeading(title, subtitle) {
+    const t = $('[data-page-title]', appState.navbar); if (t && title) t.textContent = title;
+    const s = $('[data-page-subtitle]', appState.navbar); if (s && subtitle != null) s.textContent = subtitle;
+    if (title) document.title = `${title} · CraftPanel`;
+  }
+
+  /**
+   * Render a global route into the persistent content host — the heart of the
+   * SPA. Tears down the previous page (cleanup fn + scoped listeners + charts),
+   * lazy-loads the target module, then runs it inside a listener scope so it
+   * leaves nothing behind. The shell (sidebar/navbar/socket/notifications) and
+   * the single WebSocket are never rebuilt; only <main> changes.
+   */
+  async function runPage(key, { push = true } = {}) {
+    const meta = ROUTES[key];
+    if (meta?.admin && !window.auth.can('admin')) { return runPage('marketplace', { push }); }
+
+    const path = pathOf(key);
+    if (push) { if (location.pathname !== path) history.pushState({ key }, '', path); }
+
+    // Teardown the outgoing page (no leaked listeners / charts / streams).
+    if (currentCleanup) { try { currentCleanup(); } catch { /* ignore */ } currentCleanup = null; }
+    if (currentKey) window.realtime?.clearScope('page:' + currentKey);
+    if (appState.content) destroyCharts(appState.content);
+
+    currentKey = key;
+    setActive(key);
+    if (meta) setHeading(meta.title, meta.subtitle);
+
+    const content = appState.content;
+    content.innerHTML = '<div class="p-10 text-center text-slate-500"><i data-lucide="loader" class="w-5 h-5 inline animate-spin"></i></div>';
+    window.lucide?.createIcons({ nameAttr: 'data-lucide' });
+
+    let render;
+    try { render = await ensureRenderer(key); }
+    catch (err) { content.innerHTML = `<div class="glass-card glass p-8 text-center text-red-300">Failed to load page: ${escapeHtml(err.message)}</div>`; return; }
+
+    content.innerHTML = '';
+    window.realtime?.beginScope('page:' + key);
+    try {
+      const cleanup = await render(content, appState.user);
+      currentCleanup = typeof cleanup === 'function' ? cleanup : null;
+    } catch (err) {
+      content.innerHTML = `<div class="glass-card glass p-8 text-center text-red-300">Failed to load page: ${escapeHtml(err.message)}</div>`;
+    } finally {
+      window.realtime?.endScope();
+    }
+    window.lucide?.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  const navigate = (key) => runPage(key, { push: true });
+
+  /** Install global click + popstate interception for in-app navigation. */
+  function installRouter() {
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest('a');
+      if (!a || a.target === '_blank' || e.metaKey || e.ctrlKey || e.shiftKey || a.hasAttribute('download')) return;
+      const href = a.getAttribute('href') || '';
+      if (!href.startsWith('/')) return;            // external / hash → leave alone
+      const key = routeOf(href);
+      if (!key) return;                              // service routes / unknown → normal navigation
+      e.preventDefault();
+      if (key !== currentKey) navigate(key);
+    });
+    window.addEventListener('popstate', () => {
+      const key = routeOf(location.pathname);
+      if (key && key !== currentKey) runPage(key, { push: false });
+    });
   }
 
   /** Assemble the shared chrome around a sidebar node and return the content host. */
@@ -50,7 +197,26 @@
     return content;
   }
 
+  /**
+   * Entry point used by every global page module: `Layout.mount(renderFn)`.
+   *
+   * First call (the page the browser loaded directly) builds the persistent
+   * chrome ONCE and boots the SPA router. Later calls happen when the router
+   * lazy-injects another page's module — those just register the render fn so
+   * the router can swap <main> without rebuilding the shell or the WebSocket.
+   */
   async function mount(render) {
+    // Router-driven injection: a page module loaded on demand — capture only.
+    if (appState) {
+      const key = loadingKey || $('.app-shell')?.dataset.page;
+      if (key) {
+        routeRenderers[key] = render;
+        moduleWaiters[key]?.(render);
+        delete moduleWaiters[key];
+      }
+      return;
+    }
+
     const user = await window.auth.requireAuth();
     if (!user) return;
 
@@ -58,7 +224,7 @@
     const page = shell.dataset.page;
 
     // Admin-only pages: bounce non-admins back to the Marketplace home.
-    if (shell.dataset.admin === 'true' && !window.auth.can('admin')) {
+    if ((shell.dataset.admin === 'true' || ROUTES[page]?.admin) && !window.auth.can('admin')) {
       location.href = '/marketplace';
       return;
     }
@@ -71,23 +237,36 @@
     const sidebar = el(sidebarHtml);
     const navbar = el(navbarHtml);
 
-    // Active nav link
-    const active = $(`[data-nav="${page}"]`, sidebar);
-    if (active) active.classList.add('active');
-
     // Reveal admin-only navigation for admins.
     if (window.auth.can('admin')) {
       $$('[data-admin-only]', sidebar).forEach((node) => node.classList.remove('hidden'));
     }
 
     const content = buildChrome(shell, sidebar, navbar, { title: shell.dataset.title, subtitle: shell.dataset.subtitle }, user);
+    appState = { sidebar, navbar, content, user };
+    routeRenderers[page] = render;
+    installRouter();
 
-    try {
-      await render(content, user);
-    } catch (err) {
-      content.innerHTML = `<div class="glass-card glass p-8 text-center text-red-300">Failed to load page: ${escapeHtml(err.message)}</div>`;
+    // Render the initial page. Known routes go through the router (so title +
+    // active nav + listener scoping are consistent); an unlisted/legacy page
+    // renders directly with its own dataset chrome.
+    if (ROUTES[page]) {
+      await runPage(page, { push: false });
+    } else {
+      currentKey = page;
+      const active = $(`[data-nav="${page}"]`, sidebar);
+      if (active) active.classList.add('active');
+      window.realtime?.beginScope('page:' + page);
+      try {
+        const cleanup = await render(content, user);
+        currentCleanup = typeof cleanup === 'function' ? cleanup : null;
+      } catch (err) {
+        content.innerHTML = `<div class="glass-card glass p-8 text-center text-red-300">Failed to load page: ${escapeHtml(err.message)}</div>`;
+      } finally {
+        window.realtime?.endScope();
+      }
+      window.lucide?.createIcons({ nameAttr: 'data-lucide' });
     }
-    window.lucide?.createIcons({ nameAttr: 'data-lucide' });
   }
 
   /**
