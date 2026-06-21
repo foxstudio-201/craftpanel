@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
-# CraftPanel — one-command production installer for Ubuntu Server 22.04+
+# CraftPanel — one-command production installer (multi-distro)
+# Supports: Ubuntu/Debian (apt), Arch/Manjaro/CachyOS (pacman), Fedora (dnf)
 # ---------------------------------------------------------------------------
-# Usage (remote):
-#   curl -fsSL https://raw.githubusercontent.com/<you>/craftpanel/main/install.sh | sudo bash
+# Usage (one command, no variables required):
+#   curl -fsSL https://raw.githubusercontent.com/foxstudio-201/craftpanel/main/install.sh | sudo bash
 #
-# Or with options:
-#   curl -fsSL .../install.sh | sudo REPO_URL=https://github.com/you/craftpanel.git bash
-#   sudo ./install.sh                       # from a local checkout (auto-copies ./ )
-#   sudo USE_PM2=1 ./install.sh             # use PM2 instead of systemd
+# Optional overrides:
+#   sudo USE_PM2=1 bash install.sh          # use PM2 instead of systemd
+#   sudo SOURCE_DIR=/path/to/checkout bash install.sh   # install from local files
 #
 # This script ONLY automates deployment. It does not modify application logic.
 # ---------------------------------------------------------------------------
@@ -21,11 +21,12 @@ SERVICE_USER="${SERVICE_USER:-craftpanel}"
 NODE_MAJOR="${NODE_MAJOR:-20}"            # Node.js LTS line to install
 APP_PORT="${APP_PORT:-3000}"
 USE_PM2="${USE_PM2:-0}"                   # 1 = run via PM2 instead of systemd
+PKG_MGR=""                                # detected: apt | pacman | dnf
 
-# Source of the application code (choose ONE):
-#   REPO_URL  — git repository to clone/pull (preferred for `curl | bash`)
-#   SOURCE_DIR— local directory to copy from (auto-detected when run from a checkout)
-REPO_URL="${REPO_URL:-}"
+# Source of the application code. Defaults to the official repository so the
+# installer works out of the box with no variables. Override only if needed:
+#   SOURCE_DIR — local directory to copy from instead of cloning
+REPO_URL="${REPO_URL:-https://github.com/foxstudio-201/craftpanel.git}"
 BRANCH="${BRANCH:-main}"
 SOURCE_DIR="${SOURCE_DIR:-}"
 
@@ -41,55 +42,85 @@ require_root() {
   [ "$(id -u)" -eq 0 ] || die "Run as root:  curl -fsSL .../install.sh | sudo bash"
 }
 
-require_ubuntu() {
-  [ -r /etc/os-release ] || die "Cannot detect OS (no /etc/os-release)."
-  . /etc/os-release
-  case "${ID:-}:${ID_LIKE:-}" in
-    *ubuntu*|*debian*) : ;;
-    *) die "This installer targets Ubuntu/Debian (apt). Detected: ${PRETTY_NAME:-unknown}" ;;
-  esac
-  command -v apt-get >/dev/null 2>&1 || die "apt-get not found; Ubuntu Server required."
+# Detect the package manager instead of locking to one distro.
+detect_pkg_manager() {
+  if command -v apt-get >/dev/null 2>&1; then
+    PKG_MGR="apt"
+  elif command -v pacman >/dev/null 2>&1; then
+    PKG_MGR="pacman"
+  elif command -v dnf >/dev/null 2>&1; then
+    PKG_MGR="dnf"
+  else
+    die "No supported package manager found (need apt, pacman, or dnf)."
+  fi
+  [ -r /etc/os-release ] && . /etc/os-release
+  ok "Detected ${PRETTY_NAME:-Linux}; using package manager '$PKG_MGR'."
 }
 
-# --------------------------- Detect local source ---------------------------
-# When executed from inside a checkout (not piped), default to copying it.
+# pkg_install <packages…> — install via the detected package manager.
+pkg_install() {
+  case "$PKG_MGR" in
+    apt)    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@" ;;
+    pacman) pacman -S --needed --noconfirm "$@" ;;
+    dnf)    dnf install -y "$@" ;;
+  esac
+}
+
+# pkg_refresh — refresh package metadata.
+pkg_refresh() {
+  case "$PKG_MGR" in
+    apt)    DEBIAN_FRONTEND=noninteractive apt-get update -y ;;
+    pacman) pacman -Sy --noconfirm ;;
+    dnf)    dnf -y makecache || true ;;
+  esac
+}
+
+# --------------------------- Resolve source --------------------------------
+# Default: clone the official repository. SOURCE_DIR overrides to copy locally.
 detect_source() {
-  if [ -z "$REPO_URL" ] && [ -z "$SOURCE_DIR" ]; then
-    local self_dir
-    self_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
-    if [ -n "$self_dir" ] && [ -f "$self_dir/package.json" ] \
-       && grep -q '"name": *"craftpanel"' "$self_dir/package.json" 2>/dev/null; then
-      SOURCE_DIR="$self_dir"
-      log "Detected local CraftPanel source at $SOURCE_DIR (will copy)."
-    fi
+  if [ -n "$SOURCE_DIR" ]; then
+    REPO_URL=""   # local copy takes precedence over cloning
+    log "Installing from local source: $SOURCE_DIR"
+  else
+    log "Installing from repository: $REPO_URL ($BRANCH)"
   fi
-  [ -n "$REPO_URL" ] || [ -n "$SOURCE_DIR" ] || die \
-"No source specified. Provide one of:
-  REPO_URL=https://github.com/you/craftpanel.git  (git clone)
-  SOURCE_DIR=/path/to/checkout                     (copy local files)
-e.g.  curl -fsSL .../install.sh | sudo REPO_URL=https://github.com/you/craftpanel.git bash"
 }
 
 # --------------------------- System dependencies ---------------------------
 install_base_packages() {
   log "Installing base packages (git, curl, build tools)…"
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update -y
-  apt-get install -y --no-install-recommends \
-    ca-certificates curl gnupg git build-essential python3 rsync ufw openssl
+  pkg_refresh
+  case "$PKG_MGR" in
+    apt)    pkg_install ca-certificates curl gnupg git build-essential python3 rsync openssl ufw ;;
+    pacman) pkg_install base-devel git curl rsync openssl ;;
+    dnf)    pkg_install ca-certificates curl git gcc-c++ make rsync openssl ;;
+  esac
   ok "Base packages installed."
 }
 
+node_major_ok() {
+  command -v node >/dev/null 2>&1 && \
+    [ "$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null)" -ge 18 ] 2>/dev/null
+}
+
 install_node() {
-  if command -v node >/dev/null 2>&1 && \
-     [ "$(node -p 'process.versions.node.split(".")[0]')" -ge 18 ] 2>/dev/null; then
+  if node_major_ok; then
     ok "Node.js $(node -v) already present."
     return
   fi
-  log "Installing Node.js ${NODE_MAJOR}.x (LTS) from NodeSource…"
-  curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
-  apt-get install -y nodejs
-  ok "Node.js $(node -v) / npm $(npm -v) installed."
+  log "Installing Node.js (LTS) for '$PKG_MGR'…"
+  case "$PKG_MGR" in
+    pacman) pkg_install nodejs npm ;;
+    dnf)    pkg_install nodejs npm ;;
+    apt)
+      # Ubuntu/Debian repos ship an EOL Node — use NodeSource for a current LTS.
+      curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
+      pkg_install nodejs
+      ;;
+  esac
+  command -v npm >/dev/null 2>&1 || pkg_install npm
+  node_major_ok || warn "Installed Node.js $(node -v 2>/dev/null) is older than 18; the app requires >=18."
+  ok "Node.js $(node -v) / npm $(npm -v) ready."
 }
 
 install_docker() {
@@ -97,8 +128,12 @@ install_docker() {
   if command -v docker >/dev/null 2>&1; then
     ok "Docker already present ($(docker --version | awk '{print $3}' | tr -d ,))."
   else
-    log "Installing Docker Engine (official convenience script)…"
-    curl -fsSL https://get.docker.com | sh
+    log "Installing Docker for '$PKG_MGR'…"
+    case "$PKG_MGR" in
+      apt)    pkg_install docker.io ;;
+      pacman) pkg_install docker ;;
+      dnf)    pkg_install docker ;;
+    esac
     ok "Docker installed."
   fi
   systemctl enable --now docker >/dev/null 2>&1 || warn "Could not enable docker service."
@@ -222,7 +257,7 @@ install_systemd() {
   cat > "$unit" <<UNIT
 [Unit]
 Description=CraftPanel — Server Management Dashboard
-Documentation=https://github.com/your-org/craftpanel
+Documentation=https://github.com/foxstudio-201/craftpanel
 After=network-online.target docker.service
 Wants=network-online.target
 Requires=docker.service
@@ -320,7 +355,7 @@ EOF
 # --------------------------------- Main ------------------------------------
 main() {
   require_root
-  require_ubuntu
+  detect_pkg_manager
   detect_source
   install_base_packages
   install_node

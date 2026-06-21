@@ -23,7 +23,9 @@
       "Bash(bash -n install.sh)",
       "Bash(node -c ecosystem.config.js)",
       "Bash(node --check ecosystem.config.js)",
-      "Bash(chmod +x install.sh)"
+      "Bash(chmod +x install.sh)",
+      "Bash(command -v shellcheck)",
+      "Bash(shellcheck -S warning install.sh)"
     ]
   }
 }

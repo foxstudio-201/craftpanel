@@ -9,7 +9,7 @@
 #   sudo systemctl enable --now craftpanel
 #
 Description=CraftPanel — Server Management Dashboard
-Documentation=https://github.com/your-org/craftpanel
+Documentation=https://github.com/foxstudio-201/craftpanel
 After=network-online.target docker.service
 Wants=network-online.target
 Requires=docker.service
