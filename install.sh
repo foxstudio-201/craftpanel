@@ -189,6 +189,7 @@ configure_env() {
     fi
   else
     ok ".env already exists — leaving it untouched."
+    chown "$SERVICE_USER":"$SERVICE_USER" "$env_file"
     return
   fi
 
@@ -203,6 +204,9 @@ configure_env() {
     set_env JWT_SECRET "$(openssl rand -hex 48)"
     ok "Generated a random JWT_SECRET."
   fi
+
+  # .env was written as root — hand it back to the service user.
+  chown "$SERVICE_USER":"$SERVICE_USER" "$env_file"
 }
 
 # set_env KEY VALUE — idempotent upsert into $INSTALL_DIR/.env
@@ -247,8 +251,10 @@ run_as_user() {
 }
 
 fix_permissions() {
+  # Make the entire project tree owned by the service user BEFORE any npm work,
+  # so installs/builds never hit EACCES and root/non-root ownership never mixes.
   chown -R "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR"
-  ok "Ownership set to $SERVICE_USER."
+  ok "Ownership of $INSTALL_DIR set to $SERVICE_USER."
 }
 
 # ------------------------------- systemd -----------------------------------
@@ -363,9 +369,9 @@ main() {
   install_docker
   ensure_user
   fetch_source
-  configure_env
-  install_deps_and_build
-  fix_permissions
+  fix_permissions          # take ownership immediately after cloning
+  configure_env            # writes .env, then hands it back to the service user
+  install_deps_and_build   # runs entirely as the service user (no root npm)
   if [ "$USE_PM2" = "1" ]; then
     install_pm2
   else
