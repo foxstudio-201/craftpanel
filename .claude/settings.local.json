@@ -25,7 +25,8 @@
       "Bash(node --check ecosystem.config.js)",
       "Bash(chmod +x install.sh)",
       "Bash(command -v shellcheck)",
-      "Bash(shellcheck -S warning install.sh)"
+      "Bash(shellcheck -S warning install.sh)",
+      "Bash(grep -nE 'ubuntu|debian|This installer targets|\"\\\\$ID\"|\\\\$ID\\\\\\)' install.sh)"
     ]
   }
 }

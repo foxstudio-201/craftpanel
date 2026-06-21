@@ -42,7 +42,7 @@ require_root() {
   [ "$(id -u)" -eq 0 ] || die "Run as root:  curl -fsSL .../install.sh | sudo bash"
 }
 
-# Detect the package manager instead of locking to one distro.
+# Universal: pick a package manager. No distro name is ever used to block.
 detect_pkg_manager() {
   if command -v apt-get >/dev/null 2>&1; then
     PKG_MGR="apt"
@@ -51,16 +51,11 @@ detect_pkg_manager() {
   elif command -v dnf >/dev/null 2>&1; then
     PKG_MGR="dnf"
   else
-    PKG_MGR=""
+    # The ONLY supported failure: no usable package manager at all.
+    die "No supported package manager found (need one of: apt, pacman, dnf)."
   fi
   [ -r /etc/os-release ] && . /etc/os-release
-  # Never block on OS: warn and continue if no known package manager is present.
-  if [ -z "$PKG_MGR" ]; then
-    warn "No known package manager (apt/pacman/dnf) on ${PRETTY_NAME:-this system}."
-    warn "Skipping automatic package installation — ensure git, node>=18, npm and docker are installed."
-  else
-    ok "Detected ${PRETTY_NAME:-Linux}; using package manager '$PKG_MGR'."
-  fi
+  ok "Detected ${PRETTY_NAME:-Linux}; using package manager '$PKG_MGR'."
 }
 
 # pkg_install <packages…> — install via the detected package manager.
@@ -133,9 +128,6 @@ install_docker() {
   # CraftPanel manages real Docker containers (dockerode) — required at runtime.
   if command -v docker >/dev/null 2>&1; then
     ok "Docker already present ($(docker --version | awk '{print $3}' | tr -d ,))."
-  elif [ -z "$PKG_MGR" ]; then
-    warn "No package manager — install Docker manually for full functionality."
-    return
   else
     log "Installing Docker for '$PKG_MGR'…"
     case "$PKG_MGR" in
