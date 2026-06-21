@@ -61,9 +61,21 @@
     realtime.on('metrics:server', (m) => {
       if (!m || !m.serverId) return;
       const r = rec(m.serverId);
+      // Metrics carry the REAL container truth (docker.getState): 'running' or
+      // 'stopped'. Map 'stopped' → 'offline' so a stop is reflected even if the
+      // server:status event was missed/raced (the bug: 'stopped' was discarded,
+      // leaving the badge stuck on 'running'). Never let a metrics sample stomp a
+      // short-lived transition (starting/stopping/restarting/installing) — those
+      // resolve via server:status — so the UI doesn't flicker mid-action.
+      const TRANSIENT = r.status === 'starting' || r.status === 'stopping' || r.status === 'restarting' || r.status === 'installing';
+      let nextStatus = r.status;
+      if (!TRANSIENT) {
+        if (m.status === 'running') nextStatus = 'running';
+        else if (m.status === 'stopped') nextStatus = 'offline';
+        else if (STATUS.has(m.status)) nextStatus = m.status;
+      }
       patch(m.serverId, {
-        // status from metrics only when it carries one and we have nothing better
-        status: STATUS.has(m.status) && m.status !== 'stopped' ? m.status : r.status,
+        status: nextStatus,
         cpu: m.cpu ?? 0,
         ram: { usedMb: m.ramUsedMb ?? 0, totalMb: m.ramTotalMb ?? r.ram.totalMb, pct: m.ramPercent ?? 0 },
         disk: { usedGb: m.diskUsedGb ?? 0, totalGb: m.diskTotalGb ?? r.disk.totalGb, pct: m.diskPercent ?? 0 },

@@ -19,7 +19,11 @@
       "Bash(node --check src/server.js)",
       "Bash(node --check src/controllers/serverController.js)",
       "Bash(node --check src/services/service-registry.js)",
-      "Bash(node -e \"import\\('./src/services/service-registry.js'\\).then\\(m=>{const r=m.publicRegistry\\(\\);const st=r.types.find\\(t=>t.key==='static'\\);console.log\\('static pages:',st.pages.map\\(p=>p.key\\).join\\(','\\)\\);console.log\\('static features.build/publish:',st.features.build,st.features.publish\\);console.log\\('build meta:',JSON.stringify\\(r.pageMeta.build\\)\\);}\\)\")"
+      "Bash(node -e \"import\\('./src/services/service-registry.js'\\).then\\(m=>{const r=m.publicRegistry\\(\\);const st=r.types.find\\(t=>t.key==='static'\\);console.log\\('static pages:',st.pages.map\\(p=>p.key\\).join\\(','\\)\\);console.log\\('static features.build/publish:',st.features.build,st.features.publish\\);console.log\\('build meta:',JSON.stringify\\(r.pageMeta.build\\)\\);}\\)\")",
+      "Bash(bash -n install.sh)",
+      "Bash(node -c ecosystem.config.js)",
+      "Bash(node --check ecosystem.config.js)",
+      "Bash(chmod +x install.sh)"
     ]
   }
 }

@@ -5,7 +5,6 @@ Layout.mount(async (content) => {
   const { escapeHtml, toastSuccess, toastError, confirmDialog, modal } = ui;
 
   content.innerHTML = `<div id="root"><div class="glass glass-card p-10 text-center text-slate-400">Auditing infrastructure…</div></div>`;
-  await load();
 
   async function load() {
     let a;
@@ -165,4 +164,11 @@ Layout.mount(async (content) => {
       catch (e) { toastError(e.message); }
     });
   }
+
+  // Kick off the first render LAST — after every const helper (badge, ownerBadge,
+  // …) is initialized. Calling load() earlier hit the temporal dead zone: the
+  // await suspended before these `const`s were defined, so the resumed render
+  // touched `badge` before initialization. Hoisted `function`s are unaffected;
+  // the `const` arrow helpers are the ones that must exist first.
+  await load();
 });

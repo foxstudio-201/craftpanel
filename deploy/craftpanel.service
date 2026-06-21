@@ -1,0 +1,40 @@
+[Unit]
+# CraftPanel — Server Management Dashboard
+# Reference systemd unit. install.sh writes an equivalent file to
+# /etc/systemd/system/craftpanel.service. For a manual install:
+#
+#   sudo cp deploy/craftpanel.service /etc/systemd/system/craftpanel.service
+#   # adjust User/WorkingDirectory below if you did not install to /opt/craftpanel
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now craftpanel
+#
+Description=CraftPanel — Server Management Dashboard
+Documentation=https://github.com/your-org/craftpanel
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=craftpanel
+Group=craftpanel
+WorkingDirectory=/opt/craftpanel
+Environment=NODE_ENV=production
+EnvironmentFile=-/opt/craftpanel/.env
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+KillMode=mixed
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=craftpanel
+
+# Hardening (conservative so the Docker socket + bind mounts still work)
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

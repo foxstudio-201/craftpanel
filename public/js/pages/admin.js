@@ -18,12 +18,6 @@ Layout.mount(async (content, user) => {
 
   let tab = 'overview';
   const panel = document.getElementById('panel');
-  document.querySelectorAll('#tabs [data-tab]').forEach((b) => b.addEventListener('click', () => {
-    tab = b.dataset.tab;
-    document.querySelectorAll('#tabs [data-tab]').forEach((x) => x.className = 'btn btn-sm whitespace-nowrap ' + (x === b ? 'btn-primary' : 'btn-ghost') );
-    render();
-  }));
-  render();
 
   async function render() {
     panel.innerHTML = `<div class="glass glass-card p-10 text-center text-slate-500">Loading…</div>`;
@@ -169,4 +163,16 @@ Layout.mount(async (content, user) => {
       panel.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => { try { await api.del(`/admin/announcements/${b.dataset.del}`); render(); } catch (e) { toastError(e.message); } }));
     },
   };
+
+  // Wire tab switching + first render LAST — after `const PANELS` is initialized.
+  // Previously render() ran on line ~26 (before PANELS was defined): on the very
+  // first navigation it read PANELS[tab] inside the temporal dead zone and threw
+  // "Cannot access 'PANELS' before initialization". (An F5 happened to work only
+  // because of differing execution timing — a race, not a real fix.)
+  document.querySelectorAll('#tabs [data-tab]').forEach((b) => b.addEventListener('click', () => {
+    tab = b.dataset.tab;
+    document.querySelectorAll('#tabs [data-tab]').forEach((x) => x.className = 'btn btn-sm whitespace-nowrap ' + (x === b ? 'btn-primary' : 'btn-ghost') );
+    render();
+  }));
+  render();
 });
